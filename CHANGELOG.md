@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.0.1 — 2026-04-08
+
+### Fixed
+- "Collapse all" button now works correctly (groups were staying open because missing keys defaulted to open)
+
+---
+
 ## v1.0.0 — 2026-04-08
 
 First public release of the CogSci Schedule Planner for SoSe 2026.
