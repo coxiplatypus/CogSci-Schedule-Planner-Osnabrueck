@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.1.0 — 2026-04-08
+
+### Added
+- Room field in edit and add-course forms, shown in floating tooltip
+- Click a course in the timetable grid to set its status via a popup menu (Not selected / Considering / Likely / Locked / Dropped)
+- Stud.IP data acquisition guide in CONTRIBUTING.md (step-by-step with screenshots workflow)
+- MSc PO 2024 module abbreviation reference table in CONTRIBUTING.md
+
+### Changed
+- Edit and add-course form font sizes increased from 9px to 12px
+- Sidebar can now be dragged up to 2/3 of viewport width (was capped at 600px)
+
+### Fixed
+- "Collapse all" button now works correctly
+
+---
+
 ## v1.0.1 — 2026-04-08
 
 ### Fixed
