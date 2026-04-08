@@ -1,0 +1,1131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CogSci Schedule Planner · SoSe 2026 · Uni Osnabrück</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#f5f6f8;color:#1a1d23;line-height:1.4}
+button,select,input{font-family:inherit;cursor:pointer}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+.splitter-h{width:6px;cursor:col-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none}
+.splitter-h:hover,.splitter-h.active{background:#e5e7eb}
+.splitter-h::after{content:'';width:2px;height:32px;background:#d1d5db;border-radius:1px}
+.splitter-v{height:6px;cursor:row-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none}
+.splitter-v:hover,.splitter-v.active{background:#e5e7eb}
+.splitter-v::after{content:'';height:2px;width:32px;background:#d1d5db;border-radius:1px}
+.splitter-corner{width:10px;height:10px;cursor:nwse-resize;position:absolute;right:-3px;bottom:-3px;z-index:5;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none}
+.splitter-corner::after{content:'';width:6px;height:6px;border-right:2px solid #d1d5db;border-bottom:2px solid #d1d5db;border-radius:0 0 2px 0}
+.splitter-corner:hover::after{border-color:#9ca3af}
+@media(max-width:768px){
+  .app-flex{flex-direction:column!important}
+  .app-sidebar{flex:none!important;width:100%!important;order:2!important}
+  .app-grid{order:1!important}
+  .splitter-h{display:none!important}
+  .splitter-corner{display:none!important}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useMemo,useEffect}=React;
+// ── Constants: days, hours, grid size, localStorage key ──
+const DAYS=["Mo","Tu","We","Th","Fr"],HOURS=[8,9,10,11,12,13,14,15,16,17,18,19],RH=42,SK="cogsci-pub-v1";
+// Presence/attendance modes: in-person, unclear, remote
+const PR=[{v:"yes",l:"In-person",icon:"🏫",c:"#dc2626"},{v:"unclear",l:"Unclear",icon:"❓",c:"#d97706"},{v:"no",l:"Remote OK",icon:"💻",c:"#059669"}];
+
+// Colors
+const CL={
+  ai:{c:"#2563eb",bg:"#dbeafe",t:"#1e40af"},
+  ps:{c:"#7c3aed",bg:"#ede9fe",t:"#5b21b6"},
+  ns:{c:"#059669",bg:"#d1fae5",t:"#065f46"},
+  em:{c:"#d97706",bg:"#fef3c7",t:"#78350f"},
+  mt:{c:"#6b7280",bg:"#f3f4f6",t:"#374151"},
+  fe:{c:"#db2777",bg:"#fce7f3",t:"#9d174d"},
+  sp:{c:"#0891b2",bg:"#cffafe",t:"#155e75"},
+  co:{c:"#8b5cf6",bg:"#ede9fe",t:"#5b21b6"},
+  bc:{c:"#64748b",bg:"#f1f5f9",t:"#334155"},
+  // PO19 extras
+  cp:{c:"#7c3aed",bg:"#ede9fe",t:"#5b21b6"},
+  cl:{c:"#06b6d4",bg:"#cffafe",t:"#155e75"},
+  ni:{c:"#059669",bg:"#d1fae5",t:"#065f46"},
+  n2:{c:"#16a34a",bg:"#dcfce7",t:"#14532d"},
+  ph:{c:"#d97706",bg:"#fef3c7",t:"#78350f"},
+};
+
+// PO24 areas
+const A24=[
+  {key:"AI/ML",cl:CL.ai,cap:32,spec:20,info:"NI, AI, NAI, CL, CV"},
+  {key:"Psych/Lang",cl:CL.ps,cap:32,spec:20,info:"CMP, CBC, LING"},
+  {key:"Neuroscience",cl:CL.ns,cap:32,spec:20,info:"CNS"},
+  {key:"Ethics/Mind",cl:CL.em,cap:32,spec:20,info:"EAI, PHIL"},
+  {key:"Methods",cl:CL.mt,cap:4,spec:null,info:"MCS"},
+];
+const A24fe={key:"Free Elective",cl:CL.fe};
+const A24sp={key:"Study Project",cl:CL.sp};
+const A24co={key:"Colloquium",cl:CL.co,note:"Ask supervisors if ECTS/grades can be awarded and which module they count for."};
+const A24bc={key:"BSc Core",cl:CL.bc};
+
+// PO19 areas (flat, no collapse)
+const A19=[
+  {key:"AI",cl:CL.ai,cap:16,spec:16},{key:"Cog Psych",cl:CL.cp,cap:16,spec:16},
+  {key:"Comp Ling",cl:CL.cl,cap:16,spec:16},{key:"Neuroinf",cl:CL.ni,cap:16,spec:16},
+  {key:"Neuroscience",cl:CL.n2,cap:16,spec:16},{key:"Philosophy",cl:CL.ph,cap:16,spec:16},
+];
+
+// Degree + Prüfungsordnung configurations
+const CFGS={
+  "msc24":{label:"MSc · PO 2024",areas:A24,fe:A24fe,wp:44,feN:22,total:120,po24:true,msc:true},
+  "msc19":{label:"MSc · PO 2019/20",areas:A19,fe:{key:"Free Elective",cl:CL.fe},wp:32,feN:22,total:120,po24:false,msc:true},
+  "bsc24":{label:"BSc · PO 2024",areas:A24,fe:A24fe,wp:null,feN:null,total:180,po24:true,msc:false},
+  "bsc19":{label:"BSc · PO 2019/20",areas:A19,fe:{key:"Free Elective",cl:CL.fe},wp:null,feN:null,total:180,po24:false,msc:false},
+};
+
+// ── ALL COURSES ──
+// deg: "both","msc","bsc"  cat: "course","sp","colloquium","bsc-core"
+// a24: PO24 area key, a19: PO19 area key
+const C=[
+// ─ AI/ML ─
+{id:"idl",name:"Intro to Deep Learning: Theory & Practice",short:"IntDL",ects:8,nr:"830.111",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:0,start:14,end:16},{day:4,start:10,end:12}]},
+{id:"apa",name:"Automated Proof Assistants for Mathematics",short:"APA",ects:4,nr:"830.112",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:1,start:16,end:18}]},
+{id:"ehd",name:"Enhancing AI Through Hybrid Datasets",short:"HybDS",ects:4,nr:"830.113",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:2,start:10,end:12}]},
+{id:"fmc",name:"Formal Models for Analyzing and Creating Music",short:"Music",ects:4,nr:"830.114",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[]},
+{id:"isp",name:"Intro to Signal Processing (Audio & Visual)",short:"SigPr",ects:4,nr:"3.332",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:1,start:10,end:12}]},
+{id:"gpt",name:"Building GPT from Scratch",short:"GPT",ects:8,nr:"830.803",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[],note:"Block seminar"},
+{id:"fml",name:"Foundations of Machine Learning: Theory & Practice",short:"FoML",ects:4,nr:"830.807",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:1,start:14,end:17}]},
+{id:"nd",name:"Neurodynamics",short:"NDyn",ects:8,nr:"831.007",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"Neuroinf",slots:[{day:1,start:10,end:12},{day:2,start:10,end:12},{day:3,start:10,end:12},{day:3,start:12,end:14,label:"Tut"}],note:"3 lectures + 1 tutorial"},
+{id:"hsnn",name:"Hackathon on Spiking Neural Networks: Model Diversity",short:"SNN",ects:6,nr:"831.008",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"Neuroinf",slots:[],note:"Block"},
+{id:"nmc",name:"Intro to Neuromorphic Control",short:"NMC",ects:8,nr:"830.509",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"Neuroinf",slots:[{day:3,start:14,end:16},{day:3,start:16,end:18,label:"Ex"}]},
+{id:"cbe",name:"Computationally Recreating Brain Evolution",short:"BrEvo",ects:6,nr:"830.708",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"Neuroscience",slots:[],note:"Block"},
+{id:"ned",name:"Neural Encoding with Deep Neural Networks",short:"NEnc",ects:8,nr:"830.707",deg:"both",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:1,start:14,end:18}]},
+{id:"pnm",name:"Projects at Intersection of Neuroscience and ML",short:"N&ML",ects:8,nr:"830.701",deg:"msc",cat:"course",
+  a24:"AI/ML",a19:"AI",slots:[{day:2,start:10,end:12},{day:2,start:14,end:16}]},
+{id:"bcv",name:"Begleitseminar: CV for Medical Domain (Part 3)",short:"Bgl.CV",ects:6,nr:"830.502",deg:"msc",cat:"course",
+  a24:"AI/ML",a19:"Free Elective",slots:[{day:1,start:14,end:16}],note:"IC module"},
+
+// ─ Psych/Lang ─
+{id:"brl",name:"Contemporary Topics in Biological RL",short:"BioRL",ects:6,nr:"330.213",deg:"both",cat:"course",
+  a24:"Psych/Lang",a19:"Cog Psych",slots:[{day:0,start:14,end:17}]},
+{id:"sc",name:"Social Cognition",short:"SocCo",ects:6,nr:"330.214",deg:"both",cat:"course",
+  a24:"Psych/Lang",a19:"Cog Psych",slots:[{day:0,start:9,end:12}]},
+{id:"slp",name:"Is Sleep the Best Medicine?",short:"Sleep",ects:4,nr:"830.001",deg:"both",cat:"course",
+  a24:"Psych/Lang",a19:"Cog Psych",slots:[{day:0,start:16,end:18}]},
+{id:"bse",name:"Begleitsem. SP: Emotion Regulation in Sleep",short:"Bgl.Slp",ects:4,nr:"831.010",deg:"msc",cat:"course",
+  a24:"Psych/Lang",a19:"Free Elective",slots:[{day:3,start:16,end:18}],note:"IC module"},
+{id:"bst",name:"Begleitsem. SP: Transcranial Focused Ultrasound",short:"Bgl.TUS",ects:6,nr:"3.30216",deg:"msc",cat:"course",
+  a24:"Psych/Lang",a19:"Free Elective",slots:[{day:1,start:9,end:12}],note:"IC module"},
+{id:"eta",name:"Eyetracking Experiments on Adjectives",short:"EyeTr",ects:4,nr:"831.212",deg:"both",cat:"course",
+  a24:"Psych/Lang",a19:"Comp Ling",slots:[{day:2,start:10,end:12}]},
+{id:"lac",name:"Language Acquisition and Corpus Research",short:"LangAc",ects:4,nr:"831.213",deg:"both",cat:"course",
+  a24:"Psych/Lang",a19:"Comp Ling",slots:[],note:"Block"},
+
+// ─ Neuroscience ─
+{id:"ac",name:"Action & Cognition (Motor System)",short:"A&C",ects:4,nr:"830.914",deg:"both",cat:"course",
+  a24:"Neuroscience",a19:"Neuroscience",slots:[{day:0,start:18,end:20}]},
+{id:"qst",name:"Quest (Independent Study Course)",short:"Quest",ects:4,nr:"830.904",deg:"both",cat:"course",
+  a24:"Neuroscience",a19:"Neuroscience",slots:[]},
+
+// ─ Ethics/Mind ─
+{id:"asex",name:"Research Sem: Asexuality, Affective Injustice, and Affective Atmospheres",short:"Asex",ects:6,nr:"831.126",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:3,start:8,end:11}]},
+{id:"fw",name:"Intro to Philosophy of Free Will",short:"FreeW",ects:4,nr:"831.125",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:1,start:16,end:18}]},
+{id:"fem",name:"Feminist Epistemologies",short:"FemEp",ects:4,nr:"831.127",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:1,start:10,end:12}]},
+{id:"pom",name:"Philosophy of Mind (Intensive Course)",short:"PhilM",ects:6,nr:"831.107",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:1,start:14,end:17}]},
+{id:"tp",name:"Trans Philosophy",short:"Trans",ects:4,nr:"831.116",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:2,start:12,end:14}]},
+{id:"bo",name:"Burn Out: Political Defeat (Hannah Proctor)",short:"BurnO",ects:4,nr:"831.128",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:2,start:14,end:16}]},
+{id:"eth",name:"Ethics in Theory and Practice (Intensive)",short:"EthTP",ects:6,nr:"831.123",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:2,start:10,end:12}]},
+{id:"mac",name:"Inventing Right and Wrong: Mackie's Ethics",short:"Mackie",ects:8,nr:"831.124",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:4,start:10,end:13}]},
+{id:"ceai",name:"Colloquium Ethics & Critical Theories of AI",short:"CritAI",ects:4,nr:"830.608",deg:"msc",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[{day:2,start:16,end:19}]},
+{id:"awa",name:"Anleitung zum wissenschaftlichen Arbeiten",short:"WissArb",ects:6,nr:"831.103",deg:"both",cat:"course",
+  a24:"Methods",a19:"Free Elective",slots:[]},
+{id:"eadg",name:"Intro to Ethics of AI — Discussion Groups",short:"EthDG",ects:4,nr:"8.306.011",deg:"both",cat:"course",
+  a24:"Ethics/Mind",a19:"Philosophy",slots:[]},
+
+// ─ Methods ─
+{id:"bpp",name:"Basic Programming in Python",short:"PyProg",ects:4,nr:"830.402",deg:"both",cat:"course",
+  a24:"Methods",a19:"Free Elective",slots:[]},
+
+// ─ BSc Core (only in BSc views) ─
+{id:"iai",name:"Introduction to Artificial Intelligence",short:"IntAI",ects:8,nr:"830.101",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"icl",name:"Introduction to Computational Linguistics",short:"IntCL",ects:8,nr:"830.801",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"icp24",name:"Intro to Cognitive (Neuro-)Psychology (PO24)",short:"IntCNP24",ects:4,nr:"830.201",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"icp19",name:"Intro to Cognitive (Neuro-)Psychology (PO19)",short:"IntCNP19",ects:8,nr:"8.302.011",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"acp",name:"Advanced Intro to Cognitive (Neuro-)Psychology",short:"AdvCNP",ects:4,nr:"8.302.012",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"iea",name:"Introduction to the Ethics of AI",short:"IntEthAI",ects:4,nr:"830.601",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"ipc",name:"Introduction to Philosophy for Cognitive Science",short:"IntPhil",ects:4,nr:"831.101",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+{id:"mcs",name:"Mathematics for Cognitive Science",short:"Math",ects:6,nr:"830.002",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[]},
+
+// ─ Study Projects (MSc only) ─
+{id:"sp01",name:"SP: Building CogSci Launchpad (Part 1)",short:"SP:Launch",ects:12,nr:"830.115",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[]},
+{id:"sp02",name:"SP: Cross-cultural Cognition (Part 2)",short:"SP:CrossC",ects:12,nr:"830.207",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:2,start:16,end:19}]},
+{id:"sp03",name:"SP: Transcranial Focused Ultrasound",short:"SP:TUS",ects:12,nr:"330.215",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:1,start:9,end:12},{day:2,start:9,end:12}]},
+{id:"sp04",name:"SP: Eating Like a Pig (Part I)",short:"SP:Pig",ects:12,nr:"830.306",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[]},
+{id:"sp05",name:"SP: CV for Medical Domain (Part 3)",short:"SP:CV",ects:12,nr:"830.501",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:1,start:14,end:16}]},
+{id:"sp06",name:"SP: AI for Integrative Scientific Discovery (Part II)",short:"SP:AISci",ects:12,nr:"830.405",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:3,start:12,end:14}]},
+{id:"sp07",name:"SP: Topics in Embodied Cognition",short:"SP:Embod",ects:12,nr:"830.913",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:0,start:8,end:10}]},
+{id:"sp08",name:"SP: Data-Driven Discovery of Dynamical Systems (Part I)",short:"SP:4D",ects:12,nr:"831.302",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:1,start:14,end:16}]},
+{id:"sp09",name:"SP: Emotion Regulation in Sleep (Part I)",short:"SP:Sleep",ects:12,nr:"831.009",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[]},
+{id:"sp10",name:"SP: Humanoid Robotics — Unitree G1 (Part 1)",short:"SP:Robot",ects:12,nr:"831.011",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:3,start:10,end:12}]},
+{id:"sp11",name:"SP: What Does It Mean to Act? (Part II)",short:"SP:Action",ects:12,nr:"831.122",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:1,start:9,end:12}]},
+{id:"sp12",name:"SP: Vision-Language Models (Part II)",short:"SP:VLM",ects:12,nr:"830.810",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:3,start:14,end:16}]},
+{id:"sp13",name:"SP: Modeling Communication and Abstraction (Part II)",short:"SP:Comm",ects:12,nr:"831.209",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:1,start:14,end:18}]},
+
+// ─ Colloquiums ─
+{id:"lci",name:"Language, Communication and Interaction Colloquium",short:"LCI Coll",ects:2,nr:"830.301",deg:"both",cat:"colloquium",
+  a24:"Colloquium",a19:"Colloquium",slots:[]},
+{id:"pmc",name:"Philosophy of Mind and Cognition Colloquium",short:"PMC Coll",ects:2,nr:"831.102",deg:"both",cat:"colloquium",
+  a24:"Colloquium",a19:"Colloquium",slots:[{day:1,start:18,end:20}]},
+
+// ─ New from Stud.IP export ─
+{id:"biop",name:"Biopsychologie (V)",short:"BioPsy",ects:4,nr:"811.231",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[{day:2,start:8,end:10}]},
+{id:"diffp",name:"Differentielle Psychologie (V)",short:"DiffPsy",ects:4,nr:"811.251",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[{day:0,start:12,end:14}]},
+{id:"emot",name:"Emotion und Motivation (V)",short:"EmoMot",ects:4,nr:"811.222",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[{day:3,start:10,end:12},{day:3,start:14,end:16}]},
+{id:"mci",name:"Mensch-Computer Interaktion (Ü)",short:"MCI",ects:4,nr:"812.462",deg:"bsc",cat:"bsc-core",
+  a24:"BSc Core",a19:"BSc Core",slots:[{day:1,start:10,end:12}]},
+{id:"spro",name:"SP: Getting Physical — Robot Interaction (Part I)",short:"SP:Robot2",ects:12,nr:"830.507",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:4,start:9,end:12}]},
+{id:"bsro",name:"Begleitsem. SP: Getting Physical — Robot Interaction",short:"Bgl.Rob",ects:6,nr:"830.508",deg:"msc",cat:"course",
+  a24:"AI/ML",a19:"Free Elective",slots:[{day:4,start:9,end:12}],note:"IC module"},
+{id:"spfe",name:"SP: Grundkurs Feminismus (Teil 1)",short:"SP:Fem",ects:12,nr:"831.129",deg:"msc",cat:"sp",
+  a24:"Study Project",a19:"Study Project",slots:[{day:2,start:10,end:12}]},
+];
+
+// Status states
+const ST=[{v:"considering",l:"Considering",icon:"?",c:"#8b5cf6"},{v:"likely",l:"Likely",icon:"~",c:"#2563eb"},{v:"locked",l:"Locked",icon:"✓",c:"#059669"},{v:"dropped",l:"Dropped",icon:"✕",c:"#dc2626"}];
+const ST_ORDER=["considering","likely","locked","dropped"];
+
+// ── Utility functions: overlap check, localStorage, URL encoding ──
+function overlaps(a,b){return a.day===b.day&&a.start<b.end&&b.start<a.end}
+function save(s){try{localStorage.setItem(SK,JSON.stringify(s))}catch(e){}}
+function load(){try{const s=localStorage.getItem(SK);return s?JSON.parse(s):null}catch(e){return null}}
+function toURL(s){try{return location.origin+location.pathname+"?s="+btoa(unescape(encodeURIComponent(JSON.stringify(s))))}catch(e){return null}}
+function fromURL(){try{const p=new URLSearchParams(location.search).get("s");return p?JSON.parse(decodeURIComponent(escape(atob(p)))):null}catch(e){return null}}
+
+// Generate .ics calendar file for Google Calendar / Outlook / Apple Calendar
+function exportICS(courses,status,pres,areaOfFn){
+  // First weekday on/after 2026-04-07 (Beginn der LV)
+  const FD=["20260413","20260407","20260408","20260409","20260410"];
+  let ics="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CogSci Planner//SoSe2026//EN\r\nCALSCALE:GREGORIAN\r\n";
+  courses.forEach(c=>{
+    if(!status[c.id]||c.slots.length===0)return;
+    c.slots.forEach((sl,si)=>{
+      const d=FD[sl.day];
+      const sh=String(sl.start).padStart(2,"0"),eh=String(sl.end).padStart(2,"0");
+      ics+=`BEGIN:VEVENT\r\nDTSTART:${d}T${sh}0000\r\nDTEND:${d}T${eh}0000\r\n`;
+      ics+=`RRULE:FREQ=WEEKLY;UNTIL=20260711T235959Z\r\n`;
+      ics+=`SUMMARY:${c.name}${sl.label?" ("+sl.label+")":""}\r\n`;
+      ics+=`DESCRIPTION:${c.nr||""} · ${c.ects||"?"} LP · ${areaOfFn(c)}\r\n`;
+      ics+=`UID:cogsci-${c.id}-${si}@planner\r\nEND:VEVENT\r\n`;
+    });
+  });
+  ics+="END:VCALENDAR\r\n";
+  const blob=new Blob([ics],{type:"text/calendar;charset=utf-8"});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");a.href=url;a.download="cogsci-sose2026.ics";
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+}
+
+// Parse the official Grade Calculator .xlsx to extract completed LP per area
+function parseGradeCalc(file){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=(e)=>{
+      try{
+        const wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"});
+        const ws=wb.Sheets[wb.SheetNames[0]];
+        const b1=(ws["B1"]&&ws["B1"].v)||"";
+        if(!b1.toString().includes("Grade Calculator"))return reject("This doesn't look like the official Grade Calculator spreadsheet. Expected 'Grade Calculator' in cell B1.");
+        const v=(ref)=>{const c=ws[ref];return(c&&typeof c.v==="number")?c.v:0};
+        resolve({"AI/ML":v("C11"),"Psych/Lang":v("G11"),"Neuroscience":v("K11"),"Ethics/Mind":v("C20"),"Methods":v("G20"),"Free Elective":v("K20"),"Study Project":v("G25"),"Colloquium":0,"BSc Core":0});
+      }catch(err){reject("Failed to parse file: "+err.message)}
+    };
+    reader.onerror=()=>reject("Failed to read file");
+    reader.readAsArrayBuffer(file);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════
+// Main App component — all UI and logic lives here
+// ══════════════════════════════════════════════════════════════
+function App(){
+  // ── State: plan data ──
+  const [ck,setCk]=useState("msc24");
+  const [status,setStatus]=useState({});
+  const [pres,setPres]=useState(()=>{const o={};C.forEach(c=>{o[c.id]="unclear"});return o});
+  const [custom,setCustom]=useState([]);
+  const [baseline,setBaseline]=useState({});
+  const [edits,setEdits]=useState({}); // {courseId: {name,short,ects,a24,a19,slots,...}}
+  const [dayF,setDayF]=useState(null);
+  const [ob,setOb]=useState(true);
+  const [copied,setCopied]=useState(null); // null | "local" | "shared"
+  const [ready,setReady]=useState(false);
+  const [hov,setHov]=useState(null);
+  const [mousePos,setMousePos]=useState({x:0,y:0});
+  const [expanded,setExpanded]=useState({});
+  const [groupBy,setGroupBy]=useState("area"); // "area" | "status"
+  const [showAdd,setShowAdd]=useState(false);
+  const [addSlots,setAddSlots]=useState([]);
+  const [addForm,setAddForm]=useState({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective"});
+  const [nextCid,setNextCid]=useState(1);
+  // Edit/add course form state
+  const [editingId,setEditingId]=useState(null);
+  const [editForm,setEditForm]=useState(null);
+  const [editSlots,setEditSlots]=useState([]);
+  const [showBaselineEdit,setShowBaselineEdit]=useState(false);
+
+  // Layout state (resizable panels)
+  const LK=SK+"-layout";
+  const [sideW,setSideW]=useState(300);
+  const [ectsH,setEctsH]=useState(null);
+  const [mobileGridH,setMobileGridH]=useState(null);
+  const [isMobile,setIsMobile]=useState(()=>typeof window!=="undefined"&&window.innerWidth<=768);
+  const [dragging,setDragging]=useState(null); // null | "h" | "v" | "mv" | "corner"
+
+  // Load/save layout separately from plan data
+  useEffect(()=>{
+    try{const d=JSON.parse(localStorage.getItem(LK));if(d){if(d.sideW)setSideW(d.sideW);if(d.ectsH)setEctsH(d.ectsH)}}catch(e){}
+    const onResize=()=>setIsMobile(window.innerWidth<=768);
+    window.addEventListener("resize",onResize);return()=>window.removeEventListener("resize",onResize);
+  },[]);
+  useEffect(()=>{try{localStorage.setItem(LK,JSON.stringify({sideW,ectsH}))}catch(e){}},[sideW,ectsH]);
+
+  const resetLayout=()=>{setSideW(300);setEctsH(null);setMobileGridH(null);try{localStorage.removeItem(LK)}catch(e){}};
+
+  // Drag handlers
+  const startDragH=(e)=>{
+    e.preventDefault();setDragging("h");
+    const startX=e.clientX,startW=sideW;
+    const onMove=(e2)=>setSideW(Math.max(200,Math.min(600,startW+e2.clientX-startX)));
+    const onUp=()=>{setDragging(null);document.removeEventListener("pointermove",onMove);document.removeEventListener("pointerup",onUp)};
+    document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp);
+  };
+  const startDragV=(e)=>{
+    e.preventDefault();setDragging("v");
+    const startY=e.clientY,startH=ectsH||e.target.previousElementSibling?.offsetHeight||200;
+    const onMove=(e2)=>setEctsH(Math.max(80,Math.min(window.innerHeight*0.5,startH+e2.clientY-startY)));
+    const onUp=()=>{setDragging(null);document.removeEventListener("pointermove",onMove);document.removeEventListener("pointerup",onUp)};
+    document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp);
+  };
+  const startDragMV=(e)=>{
+    e.preventDefault();setDragging("mv");
+    const startY=e.clientY,startH=mobileGridH||window.innerHeight*0.6;
+    const onMove=(e2)=>setMobileGridH(Math.max(150,Math.min(window.innerHeight*0.85,startH+e2.clientY-startY)));
+    const onUp=()=>{setDragging(null);document.removeEventListener("pointermove",onMove);document.removeEventListener("pointerup",onUp)};
+    document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp);
+  };
+  const startDragCorner=(e)=>{
+    e.preventDefault();setDragging("corner");
+    const startX=e.clientX,startY=e.clientY,startW=sideW,startH=ectsH||e.target.closest(".app-sidebar")?.querySelector("[data-ects]")?.offsetHeight||200;
+    const onMove=(e2)=>{setSideW(Math.max(200,Math.min(600,startW+e2.clientX-startX)));setEctsH(Math.max(80,Math.min(window.innerHeight*0.5,startH+e2.clientY-startY)))};
+    const onUp=()=>{setDragging(null);document.removeEventListener("pointermove",onMove);document.removeEventListener("pointerup",onUp)};
+    document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp);
+  };
+  const [importError,setImportError]=useState(null);
+  const [showRef,setShowRef]=useState(false);
+  const [confirmDelete,setConfirmDelete]=useState(false);
+
+  const isOn=(id)=>!!status[id]&&status[id]!=="dropped";
+  const stOf=(id)=>ST.find(s=>s.v===status[id])||null;
+  const cfg=CFGS[ck];
+  const isPo24=cfg.po24;
+  const isMsc=cfg.msc;
+
+  // Merge custom courses + edits into effective course list
+  const allCourses=useMemo(()=>[...C,...custom],[custom]);
+  const courses=useMemo(()=>allCourses.map(c=>edits[c.id]?{...c,...edits[c.id]}:c),[allCourses,edits]);
+  const areaOf=(c)=>{
+    if(c.cat==="colloquium")return "Colloquium";
+    if(c.cat==="sp")return "Study Project";
+    if(c.cat==="bsc-core")return "BSc Core";
+    return isPo24?c.a24:c.a19;
+  };
+
+  // Filter courses by selected degree (BSc/MSc)
+  const visible=useMemo(()=>courses.filter(c=>{
+    if(c.deg==="msc"&&!isMsc)return false;
+    if(c.deg==="bsc"&&isMsc)return false;
+    if(c.cat==="sp"&&!isMsc)return false;
+    if(c.cat==="bsc-core"&&isMsc)return false;
+    return true;
+  }),[ck,courses]);
+
+  // Load (supports old format migration: on→status)
+  useEffect(()=>{
+    // Priority: URL params > localStorage. Supports old format migration (on→status)
+    const u=fromURL(),s=load(),d=u||s;
+    if(d){
+      if(d.ck&&CFGS[d.ck])setCk(d.ck);
+      if(d.status)setStatus(d.status);
+      else if(d.on){const m={};Object.entries(d.on).forEach(([k,v])=>{if(v)m[k]="locked"});setStatus(m)}
+      if(d.pres)setPres(p=>{const n={...p};Object.entries(d.pres).forEach(([k,v])=>{if(k in n)n[k]=v});return n});
+      if(d.custom){setCustom(d.custom);d.custom.forEach(c=>{setPres(p=>({...p,[c.id]:p[c.id]||"unclear"}))})}
+      if(d.edits)setEdits(d.edits);
+      // Baseline: use URL's baseline if present, otherwise keep recipient's own from localStorage
+      if(d.baseline)setBaseline(d.baseline);
+      else if(u&&s&&s.baseline)setBaseline(s.baseline);
+      setOb(false);
+      if(u)history.replaceState({},"",location.pathname);
+    }
+    setReady(true);
+  },[]);
+  useEffect(()=>{if(ready)save({ck,status,pres,custom,edits,baseline})},[ck,status,pres,custom,edits,baseline,ready]);
+
+  // Status: direct set (segmented control)
+  const setSt=(id,v)=>setStatus(p=>{
+    if(v===status[id]){const n={...p};delete n[id];return n}  // click active = deselect
+    return{...p,[id]:v};
+  });
+  const dropCourse=(id)=>setStatus(p=>{const n={...p};delete n[id];return n});
+  const cyclePres=(id)=>{const o=["yes","unclear","no"];setPres(p=>({...p,[id]:o[(o.indexOf(p[id])+1)%3]}))};
+
+  // Add custom course (multi-slot)
+  const addCustom=()=>{
+    const f=addForm;if(!f.name.trim())return;
+    const id=`custom-${nextCid}`;
+    const nc={id,name:f.name.trim(),short:f.short.trim()||f.name.trim().split(/\s+/)[0],ects:parseInt(f.ects)||4,nr:"",
+      deg:"both",cat:"course",a24:f.a24,a19:f.a19,slots:addSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end)})),note:"Custom",isCustom:true};
+    setCustom(p=>[...p,nc]);
+    setStatus(p=>({...p,[id]:"considering"}));
+    setPres(p=>({...p,[id]:"unclear"}));
+    setNextCid(n=>n+1);
+    setAddForm({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective"});
+    setAddSlots([]);
+    setShowAdd(false);
+  };
+  const removeCustom=(id)=>{
+    setCustom(p=>p.filter(c=>c.id!==id));
+    setEdits(p=>{const n={...p};delete n[id];return n});
+    setStatus(p=>{const n={...p};delete n[id];return n});
+    setPres(p=>{const n={...p};delete n[id];return n});
+  };
+
+  // Edit any course
+  const startEdit=(c)=>{
+    setEditingId(c.id);
+    setEditForm({name:c.name,short:c.short,ects:c.ects,a24:c.a24||"Free Elective",a19:c.a19||"Free Elective",nr:c.nr||""});
+    setEditSlots(c.slots.map(s=>({day:String(s.day),start:String(s.start),end:String(s.end),label:s.label||""})));
+  };
+  const saveEdit=()=>{
+    if(!editForm||!editingId)return;
+    const f=editForm;
+    const patch={name:f.name.trim(),short:f.short.trim(),ects:parseInt(f.ects)||4,a24:f.a24,a19:f.a19,nr:f.nr,
+      slots:editSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end),...(s.label?{label:s.label}:{})}))};
+    // For custom courses, update the custom array directly
+    const isCustom=editingId.startsWith("custom-");
+    if(isCustom){
+      setCustom(p=>p.map(c=>c.id===editingId?{...c,...patch}:c));
+    }else{
+      setEdits(p=>({...p,[editingId]:patch}));
+    }
+    setEditingId(null);setEditForm(null);setEditSlots([]);
+  };
+  const cancelEdit=()=>{setEditingId(null);setEditForm(null);setEditSlots([])};
+  const resetEdit=(id)=>{setEdits(p=>{const n={...p};delete n[id];return n})};
+
+  // Conflicts: hard (locked/likely vs locked/likely, at least one locked) and soft (likely vs likely)
+  const conflicts=useMemo(()=>{
+    const hardSet=new Set(),softSet=new Set(),hardPairs=[],softPairs=[];
+    const act=visible.filter(c=>(status[c.id]==="locked"||status[c.id]==="likely")&&c.slots.length>0);
+    for(let i=0;i<act.length;i++)for(let j=i+1;j<act.length;j++){
+      if(pres[act[i].id]==="no"||pres[act[j].id]==="no")continue;
+      for(const sa of act[i].slots)for(const sb of act[j].slots){
+        if(!overlaps(sa,sb))continue;
+        const pair={a:act[i],b:act[j],day:sa.day,from:Math.max(sa.start,sb.start),to:Math.min(sa.end,sb.end)};
+        if(status[act[i].id]==="likely"&&status[act[j].id]==="likely"){
+          softSet.add(act[i].id);softSet.add(act[j].id);softPairs.push(pair);
+        }else{
+          hardSet.add(act[i].id);hardSet.add(act[j].id);hardPairs.push(pair);
+        }
+      }
+    }
+    return{hardSet,softSet,hardPairs,softPairs,allSet:new Set([...hardSet,...softSet])};
+  },[status,pres,visible]);
+
+  // ECTS: split confirmed (locked+likely) vs considering
+  const proj=useMemo(()=>{
+    const rl={},rk={},rc={};
+    const init=(k)=>{rl[k]=0;rk[k]=0;rc[k]=0};
+    cfg.areas.forEach(a=>init(a.key));init(cfg.fe.key);
+    if(isMsc){init("Study Project");init("Colloquium")}
+    if(!isMsc)init("BSc Core");
+    visible.filter(c=>isOn(c.id)).forEach(c=>{
+      const a=areaOf(c),lp=c.ects||0;
+      if(status[c.id]==="considering"){rc[a]=(rc[a]||0)+lp}
+      else if(status[c.id]==="locked"){rl[a]=(rl[a]||0)+lp}
+      else if(status[c.id]==="likely"){rk[a]=(rk[a]||0)+lp}
+    });
+    return{locked:rl,likely:rk,considering:rc};
+  },[status,ck,visible]);
+
+  const wpTotal=cfg.areas.reduce((s,a)=>s+(proj.locked[a.key]||0)+(proj.likely[a.key]||0),0);
+  const wpCons=cfg.areas.reduce((s,a)=>s+(proj.considering[a.key]||0),0);
+  const feTotal=(proj.locked[cfg.fe.key]||0)+(proj.likely[cfg.fe.key]||0);
+  const feCons=proj.considering[cfg.fe.key]||0;
+  const selTotal=Object.keys(proj.locked).reduce((s,k)=>s+(proj.locked[k]||0)+(proj.likely[k]||0),0);
+  const conTotal=Object.values(proj.considering).reduce((a,b)=>a+b,0);
+
+  // ── Grid slot map: map each hour-cell to the courses that occupy it ──
+  const slotMap=useMemo(()=>{
+    const m={};DAYS.forEach((_,di)=>HOURS.forEach(h=>{m[`${di}-${h}`]=[]}));
+    visible.forEach(c=>{if(!isOn(c.id))return;
+      c.slots.forEach((sl,si)=>{for(let h=sl.start;h<sl.end;h++){const k=`${sl.day}-${h}`;if(m[k])m[k].push({course:c,slot:sl,si,isStart:h===sl.start})}});
+    });return m;
+  },[status,visible]);
+
+  const visDays=dayF!==null?[dayF]:[0,1,2,3,4];
+  const allConflictPairs=[...conflicts.hardPairs,...conflicts.softPairs];
+  const fHardConf=dayF!==null?conflicts.hardPairs.filter(p=>p.day===dayF):conflicts.hardPairs;
+  const fSoftConf=dayF!==null?conflicts.softPairs.filter(p=>p.day===dayF):conflicts.softPairs;
+
+  const hasBaseline=Object.values(baseline).some(v=>v>0);
+  // ── Share, export, reset ──
+  const isHosted=location.protocol.startsWith("http");
+  const share=(withBaseline)=>{const data={ck,status,pres,custom,edits};if(withBaseline)data.baseline=baseline;const url=toURL(data);if(url)navigator.clipboard.writeText(url).then(()=>{setCopied(withBaseline?"credits":"plan");setTimeout(()=>setCopied(null),5e3)}).catch(()=>prompt("Copy:",url))};
+  const doExport=()=>exportICS(visible,status,pres,areaOf);
+  const handleImport=(e)=>{
+    const file=e.target.files[0];if(!file)return;
+    setImportError(null);
+    parseGradeCalc(file).then(b=>{setBaseline(b);setShowBaselineEdit(false)}).catch(err=>setImportError(String(err)));
+    e.target.value="";
+  };
+  const reset=()=>{setStatus({});const p={};courses.forEach(c=>{p[c.id]="unclear"});setPres(p)};
+  const deleteAllData=()=>{
+    try{localStorage.removeItem(SK)}catch(e){}
+    setStatus({});setEdits({});setBaseline({});setCustom([]);
+    const p={};C.forEach(c=>{p[c.id]="unclear"});setPres(p);
+    setCk("msc24");setConfirmDelete(false);
+    if(location.search)history.replaceState({},"",location.pathname);
+  };
+
+  const toggleArea=(key)=>setExpanded(p=>({...p,[key]:!p[key]}));
+  const expandAll=()=>{const e={};categories.forEach(g=>{e[g.key]=true});setExpanded(e)};
+  const collapseAll=()=>setExpanded({});
+
+  // Build area-based categories
+  const categories=useMemo(()=>{
+    const cats=[];
+    const addCat=(key,cl,crs,extra={})=>{
+      if(crs.length===0)return;
+      const weekly=crs.filter(c=>c.slots.length>0);
+      const block=crs.filter(c=>c.slots.length===0);
+      const selN=crs.filter(c=>isOn(c.id)).length;
+      const selLP=crs.filter(c=>isOn(c.id)).reduce((s,c)=>s+(c.ects||0),0);
+      const hasConf=crs.some(c=>conflicts.allSet.has(c.id));
+      cats.push({key,cl,...extra,courses:crs,weekly,block,selN,selLP,hasConf});
+    };
+    if(isPo24){
+      cfg.areas.forEach(a=>{
+        addCat(a.key,a.cl,visible.filter(c=>areaOf(c)===a.key),{cap:a.cap,spec:a.spec,info:a.info});
+      });
+    }
+    addCat("Free Elective",CL.fe,visible.filter(c=>areaOf(c)==="Free Elective"&&c.cat==="course"));
+    if(isMsc)addCat("Study Project",CL.sp,visible.filter(c=>c.cat==="sp"));
+    addCat("Colloquium",CL.co,visible.filter(c=>c.cat==="colloquium"),{note:A24co.note});
+    if(!isMsc)addCat("BSc Core",CL.bc,visible.filter(c=>c.cat==="bsc-core"));
+    if(!isPo24){
+      cfg.areas.forEach(a=>{
+        addCat(a.key,a.cl,visible.filter(c=>areaOf(c)===a.key&&c.cat==="course"),{cap:a.cap,spec:a.spec});
+      });
+    }
+    return cats;
+  },[visible,ck,status,conflicts]);
+
+  // Build status-based groups
+  const statusGroups=useMemo(()=>{
+    const groups=[
+      {key:"locked",label:"Locked",icon:"✓",cl:{c:"#059669",bg:"#d1fae5",t:"#065f46"},courses:[]},
+      {key:"likely",label:"Likely",icon:"~",cl:{c:"#2563eb",bg:"#dbeafe",t:"#1e40af"},courses:[]},
+      {key:"considering",label:"Considering",icon:"?",cl:{c:"#8b5cf6",bg:"#ede9fe",t:"#5b21b6"},courses:[]},
+      {key:"off",label:"Not selected",icon:"",cl:{c:"#9ca3af",bg:"#f3f4f6",t:"#6b7280"},courses:[]},
+      {key:"dropped",label:"Dropped",icon:"✕",cl:{c:"#dc2626",bg:"#fef2f2",t:"#991b1b"},courses:[]},
+    ];
+    visible.forEach(c=>{
+      const s=status[c.id];
+      const g=groups.find(x=>x.key===(s||"off"));
+      if(g)g.courses.push(c);
+    });
+    groups.forEach(g=>{
+      g.weekly=g.courses.filter(c=>c.slots.length>0);
+      g.block=g.courses.filter(c=>c.slots.length===0);
+      g.selN=g.courses.length;
+      g.selLP=g.courses.reduce((s,c)=>s+(c.ects||0),0);
+      g.hasConf=g.courses.some(c=>conflicts.allSet.has(c.id));
+    });
+    return groups;
+  },[visible,status,conflicts]);
+
+  const getClForArea=(key)=>{const cat=categories.find(c=>c.key===key);return cat?cat.cl:CL.fe};
+
+  // Slot editor component (reusable for add + edit forms)
+  const SlotEditor=({slots,setSlots})=>(
+    <div style={{marginBottom:3}}>
+      {slots.map((sl,i)=>(
+        <div key={i} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
+          <select value={sl.day} onChange={e=>{const n=[...slots];n[i]={...n[i],day:e.target.value};setSlots(n)}} style={{flex:1,padding:"2px 4px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9}}>
+            {DAYS.map((d,di)=><option key={di} value={di}>{d}</option>)}
+          </select>
+          <select value={sl.start} onChange={e=>{const n=[...slots];n[i]={...n[i],start:e.target.value};setSlots(n)}} style={{width:44,padding:"2px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9}}>
+            {HOURS.map(h=><option key={h} value={h}>{h}:00</option>)}
+          </select>
+          <span style={{fontSize:9,color:"#9ca3af"}}>–</span>
+          <select value={sl.end} onChange={e=>{const n=[...slots];n[i]={...n[i],end:e.target.value};setSlots(n)}} style={{width:44,padding:"2px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9}}>
+            {[...HOURS.filter(h=>h>parseInt(sl.start)),20].map(h=><option key={h} value={h}>{h}:00</option>)}
+          </select>
+          <button onClick={()=>setSlots(slots.filter((_,j)=>j!==i))} style={{width:14,height:14,borderRadius:2,border:"none",background:"#fef2f2",color:"#dc2626",fontSize:8,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+        </div>
+      ))}
+      <button onClick={()=>setSlots([...slots,{day:"0",start:"10",end:"12"}])} style={{fontSize:9,color:"#2563eb",background:"none",border:"none",padding:"2px 0"}}>+ Add time slot</button>
+    </div>
+  );
+
+  // Render a course row in sidebar
+  const CourseRow=({c,g})=>{
+    const st=stOf(c.id);const active=isOn(c.id);
+    const hasConf=conflicts.allSet.has(c.id);
+    const isHard=conflicts.hardSet.has(c.id);
+    const hasSched=c.slots.length>0;
+    const pr=PR.find(p=>p.v===pres[c.id]);
+    const isEdited=!!edits[c.id];
+    const isHovered=hov===c.id;
+
+    // Inline edit form
+    if(editingId===c.id)return(
+      <div style={{padding:6,background:"#f8fafc",borderRadius:5,marginBottom:2,border:"1px solid #e5e7eb"}}>
+        <div style={{fontSize:9,fontWeight:700,marginBottom:3,display:"flex",justifyContent:"space-between"}}>
+          <span>Edit: {c.short}</span>
+          {isEdited&&!c.isCustom&&<button onClick={()=>{resetEdit(c.id);cancelEdit()}} style={{fontSize:8,color:"#d97706",background:"none",border:"none"}} title="Reset to original data">Reset</button>}
+        </div>
+        <input value={editForm.name} onChange={e=>setEditForm(p=>({...p,name:e.target.value}))} placeholder="Name" style={{width:"100%",padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9,marginBottom:2}}/>
+        <div style={{display:"flex",gap:2,marginBottom:2}}>
+          <input value={editForm.short} onChange={e=>setEditForm(p=>({...p,short:e.target.value}))} placeholder="Short" style={{flex:1,padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9}}/>
+          <input type="number" value={editForm.ects} onChange={e=>setEditForm(p=>({...p,ects:e.target.value}))} style={{width:36,padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9}} title="ECTS"/>
+        </div>
+        <select value={editForm.a24} onChange={e=>setEditForm(p=>({...p,a24:e.target.value,a19:e.target.value}))} style={{width:"100%",padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9,marginBottom:2}}>
+          {[...cfg.areas.map(a=>a.key),"Free Elective","Study Project","Colloquium","BSc Core"].map(k=><option key={k} value={k}>{k}</option>)}
+        </select>
+        <SlotEditor slots={editSlots} setSlots={setEditSlots}/>
+        <div style={{display:"flex",gap:3,marginTop:2}}>
+          <button onClick={saveEdit} style={{flex:1,padding:"3px",borderRadius:3,border:"none",background:"#1d4ed8",color:"white",fontSize:9,fontWeight:600}}>Save</button>
+          <button onClick={cancelEdit} style={{padding:"3px 6px",borderRadius:3,border:"1px solid #d1d5db",background:"white",fontSize:9,color:"#6b7280"}}>Cancel</button>
+        </div>
+      </div>
+    );
+
+    const isDropped=status[c.id]==="dropped";
+    return(
+      <div style={{
+        display:"flex",alignItems:"center",gap:4,padding:"5px 6px",marginBottom:3,borderRadius:6,
+        background:isHovered?"#eff6ff":"transparent",
+        opacity:isDropped?.35:active?(status[c.id]==="considering"?.7:1):.55,
+        textDecoration:isDropped?"line-through":"none",
+        transition:"all .1s",
+      }} onMouseEnter={()=>setHov(c.id)} onMouseMove={e=>setMousePos({x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)}>
+        {/* Segmented status control */}
+        <div style={{display:"flex",borderRadius:5,overflow:"hidden",flexShrink:0,border:"1.5px solid #d1d5db"}}>
+          {ST.map(s=>{
+            const isCur=status[c.id]===s.v;
+            return <button key={s.v} onClick={()=>setSt(c.id,s.v)} title={s.l} style={{
+              width:22,height:22,padding:0,border:"none",borderRight:"1px solid #e5e7eb",
+              background:isCur?`${s.c}25`:"white",color:isCur?s.c:"#c0c0c0",
+              fontSize:12,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",
+            }}>{s.icon}</button>
+          })}
+        </div>
+        <span style={{
+          flex:1,fontSize:14,lineHeight:1.35,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",
+          fontWeight:active?600:400,color:isDropped?"#9ca3af":active?"#111827":"#6b7280",
+        }}>
+          {c.short} <span style={{fontWeight:400,color:"#9ca3af",fontSize:13}}>{c.ects||"?"}</span>
+          {!hasSched&&<span style={{fontSize:11,color:"#9ca3af"}}> ∅</span>}
+          {isEdited&&<span style={{fontSize:11,color:"#d97706"}}> ✎</span>}
+        </span>
+        {/* Edit icon on hover */}
+        {isHovered&&!isDropped&&<button onClick={()=>startEdit(c)} title="Edit course data" style={{
+          width:20,height:20,borderRadius:3,border:"none",background:"transparent",color:"#6b7280",
+          fontSize:13,padding:0,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+        }}>✎</button>}
+        {c.isCustom&&<button onClick={()=>removeCustom(c.id)} title="Remove custom course" style={{
+          width:20,height:20,borderRadius:3,border:"none",background:"#fef2f2",color:"#dc2626",
+          fontSize:12,padding:0,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
+        }}>×</button>}
+        {active&&hasSched&&!isDropped&&<button onClick={()=>cyclePres(c.id)} title={pr?`${pr.l} — click to change`:""} style={{
+          width:26,height:22,borderRadius:5,border:`1.5px solid ${pr.c}44`,
+          background:`${pr.c}15`,fontSize:13,padding:0,flexShrink:0,
+          display:"flex",alignItems:"center",justifyContent:"center",
+        }}>{pr.icon}</button>}
+      </div>
+    );
+  };
+
+  // ── Onboarding ──
+  if(ob)return(
+    <div style={{maxWidth:540,margin:"0 auto",padding:"20px",height:"100vh",overflowY:"auto"}}>
+      <div style={{background:"white",borderRadius:16,padding:"28px 24px",boxShadow:"0 4px 24px rgba(0,0,0,.07)"}}>
+        <div style={{fontSize:12,fontWeight:600,color:"#6b7280",marginBottom:4}}>Universität Osnabrück</div>
+        <h1 style={{fontSize:22,fontWeight:800,marginBottom:4,letterSpacing:"-.4px"}}>CogSci Schedule Planner</h1>
+        <div style={{fontSize:13,color:"#4b5563",marginBottom:16}}>Summer Semester 2026</div>
+        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:12,marginBottom:16,fontSize:12,color:"#92400e",lineHeight:1.5}}>
+          <strong>⚠ Disclaimer:</strong> This tool was created by students, not the university. Course times, ECTS values, and module mappings may be incorrect or incomplete. Always verify against <strong>Stud.IP</strong> and your Prüfungsordnung.
+        </div>
+        <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10,padding:12,marginBottom:16,fontSize:12,color:"#991b1b",lineHeight:1.5}}>
+          <strong>📅 Sunset notice:</strong> This tool will be taken down no later than <strong>November 30, 2026</strong>.
+        </div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>Degree & Prüfungsordnung</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
+            {Object.entries(CFGS).map(([k,v])=>(
+              <button key={k} onClick={()=>setCk(k)} style={{
+                padding:"10px",borderRadius:9,fontSize:12,fontWeight:600,textAlign:"left",
+                border:ck===k?"2px solid #2563eb":"2px solid #e5e7eb",
+                background:ck===k?"#eff6ff":"white",color:ck===k?"#1d4ed8":"#4b5563",
+              }}>
+                <div style={{fontWeight:700,fontSize:13}}>{v.label}</div>
+                <div style={{fontSize:10,fontWeight:400,marginTop:2,color:"#6b7280"}}>{v.total} LP total</div>
+              </button>
+            ))}
+          </div>
+        </div>
+        <div style={{background:"#f8fafc",borderRadius:10,padding:12,marginBottom:16,fontSize:12,color:"#4b5563",lineHeight:1.6}}>
+          <div style={{fontWeight:700,marginBottom:4,fontSize:13}}>How it works</div>
+          <div style={{marginBottom:3}}>1. <strong>Set status</strong> — use the <span style={{fontFamily:"monospace",background:"#e5e7eb",padding:"0 3px",borderRadius:3}}>[? ~ ✓ ✕]</span> controls next to each course. Click the state you want directly; click it again to deselect.</div>
+          <div style={{marginBottom:3}}>2. <strong>Resolve conflicts</strong> — overlapping courses appear side-by-side in the grid. Use the attendance toggle (🏫/❓/💻) to set whether you'll attend in person. Remote courses don't trigger conflicts.</div>
+          <div style={{marginBottom:3}}>3. <strong>Track ECTS</strong> — the sidebar shows LP per focus area. Green line = specialization threshold (20 LP). Red line = cap (32 LP).</div>
+          <div style={{marginBottom:3}}>4. <strong>Import credits</strong> — upload the official Grade Calculator spreadsheet (.xlsx from cs-mentoring@uos.de) to include your already-completed LP in the projections.</div>
+          <div style={{marginBottom:3}}>5. <strong>Export & share</strong> — download an .ics calendar file, or copy a link. Since there are no accounts, the share link is also how you transfer your plan to another device or back it up. "Share" excludes your personal credits; "Share + Credits" includes them.</div>
+          <div style={{marginBottom:3}}>6. <strong>Edit courses</strong> — hover over any course and click ✎ to correct its name, ECTS, area, or time slots. Changes are saved locally.</div>
+          <div>7. <strong>Custom courses</strong> — use the "+ Add custom course" button at the bottom of the sidebar to add courses not in the catalog.</div>
+        </div>
+
+        {/* Reference section (collapsible) */}
+        <button onClick={()=>setShowRef(!showRef)} style={{width:"100%",padding:"8px 12px",borderRadius:10,border:"1px solid #e5e7eb",background:showRef?"#f8fafc":"white",fontSize:12,fontWeight:600,color:"#374151",textAlign:"left",marginBottom:showRef?0:16}}>
+          {showRef?"▾":"▸"} Detailed reference
+        </button>
+        {showRef&&<div style={{background:"#f8fafc",borderRadius:"0 0 10px 10px",padding:12,marginBottom:16,fontSize:11.5,color:"#4b5563",lineHeight:1.6}}>
+          <div style={{marginBottom:8}}>
+            <div style={{fontWeight:700,marginBottom:3}}>Status states</div>
+            <div style={{display:"grid",gridTemplateColumns:"auto 1fr",gap:"2px 8px",fontSize:11}}>
+              <span style={{color:"#8b5cf6",fontWeight:700}}>?</span><span><strong>Considering</strong> — tentative. Does NOT count toward conflicts. Shown faintly in the grid. ECTS shown as (+X?) in the sidebar.</span>
+              <span style={{color:"#2563eb",fontWeight:700}}>~</span><span><strong>Likely</strong> — probably taking it. Counts toward ECTS and triggers soft conflicts (orange) with other likely courses.</span>
+              <span style={{color:"#059669",fontWeight:700}}>✓</span><span><strong>Locked</strong> — confirmed choice. Counts toward ECTS and triggers hard conflicts (red) with other locked/likely courses.</span>
+              <span style={{color:"#dc2626",fontWeight:700}}>✕</span><span><strong>Dropped</strong> — decided against. Hidden from grid and ECTS. Stays in sidebar (greyed out, collapsed) so you don't reconsider it.</span>
+            </div>
+          </div>
+          <div style={{marginBottom:8}}>
+            <div style={{fontWeight:700,marginBottom:3}}>Conflict detection</div>
+            <div style={{fontSize:11}}>Conflicts are only detected between courses where both are <strong>locked or likely</strong> (not considering/dropped), both have overlapping time slots, and neither is set to 💻 Remote OK. Hard conflicts (red) involve at least one locked course. Soft conflicts (orange) are between two likely courses.</div>
+          </div>
+          <div style={{marginBottom:8}}>
+            <div style={{fontWeight:700,marginBottom:3}}>ECTS progress bars</div>
+            <div style={{fontSize:11}}>Each focus area bar has up to three segments: <strong>dark</strong> = imported past credits, <strong>medium</strong> = locked/likely selections, <strong>light</strong> = considering. The <span style={{color:"#059669"}}>green line</span> marks the specialization threshold (20 LP in PO 2024). The <span style={{color:"#dc2626"}}>red line</span> marks the cap (32 LP). Areas turn green when you reach specialization, red when you exceed the cap.</div>
+          </div>
+          <div style={{marginBottom:8}}>
+            <div style={{fontWeight:700,marginBottom:3}}>Attendance modes</div>
+            <div style={{fontSize:11}}>🏫 <strong>In-person</strong> and ❓ <strong>Unclear</strong> count as potential conflicts. 💻 <strong>Remote OK</strong> means this course won't conflict with anything — useful for hybrid/online courses.</div>
+          </div>
+          <div style={{marginBottom:8}}>
+            <div style={{fontWeight:700,marginBottom:3}}>Importing past credits</div>
+            <div style={{fontSize:11}}>The "Import credits" button in the ECTS panel accepts the official Grade Calculator spreadsheet (.xlsx) distributed by the CogSci mentoring program (cs-mentoring@uos.de). The tool reads your completed LP per focus area from specific cells. You can also enter values manually.</div>
+          </div>
+          <div>
+            <div style={{fontWeight:700,marginBottom:3}}>Data & privacy</div>
+            <div style={{fontSize:11}}>All data is stored locally in your browser (localStorage). Nothing is sent to any server. Share links encode your plan in the URL — if you're using the hosted version, anyone with the link can view your plan. If you're using the file locally (file://), the link only works on your own computer. To move your plan to another device or browser, use the "Share" button — the link contains your full plan and works as both a share link and a backup. The "Delete all data" button in the footer permanently removes everything.</div>
+          </div>
+        </div>}
+
+        <button onClick={()=>setOb(false)} style={{
+          width:"100%",padding:"11px",borderRadius:10,border:"none",
+          background:"#1d4ed8",color:"white",fontSize:14,fontWeight:700,
+        }}>Start planning →</button>
+      </div>
+    </div>
+  );
+
+  // ── Main ──
+  const totalConf=conflicts.hardPairs.length+conflicts.softPairs.length;
+  return(
+    <div style={{height:"100vh",display:"flex",flexDirection:"column",margin:"0 auto",padding:"10px 24px",overflow:"hidden"}}>
+      {/* Header */}
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:5,flexWrap:"wrap",gap:6}}>
+        <div>
+          <h1 style={{fontSize:16,fontWeight:800,letterSpacing:"-.3px"}}>Schedule SoSe 2026</h1>
+          <div style={{fontSize:10.5,color:"#9ca3af"}}>
+            {cfg.label}
+            {conflicts.hardPairs.length>0&&<span style={{color:"#dc2626"}}> · ⚠ {conflicts.hardPairs.length} conflict{conflicts.hardPairs.length>1?"s":""}</span>}
+            {conflicts.softPairs.length>0&&<span style={{color:"#d97706"}}> · {conflicts.softPairs.length} potential</span>}
+            {totalConf===0&&<span style={{color:"#059669"}}> · ✓ No conflicts</span>}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap"}}>
+          <select value={ck} onChange={e=>setCk(e.target.value)} title="Choose your degree and Prüfungsordnung" style={{padding:"4px 7px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,fontWeight:600,background:"white"}}>
+            {Object.entries(CFGS).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+          </select>
+          <button onClick={()=>share(false)} title="Copy link to share with others or open on another device (without personal credits)" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,fontWeight:600,background:copied==="plan"?"#ecfdf5":"white",color:copied==="plan"?"#059669":"#374151"}}>{copied==="plan"?"✓ Copied!":"🔗 Share"}</button>
+          {hasBaseline&&<button onClick={()=>share(true)} title="Copy link including imported credits — also works for transferring to another device" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,fontWeight:600,background:copied==="credits"?"#ecfdf5":"white",color:copied==="credits"?"#059669":"#374151"}}>{copied==="credits"?"✓ Copied!":"🔗 Share + Credits"}</button>}
+          {copied&&<span style={{fontSize:11,color:isHosted?"#059669":"#d97706",maxWidth:240,lineHeight:1.3}}>
+            {isHosted?"✓ Link copied — anyone with this link can view your plan.":"⚠ This link only works on your computer. To share with others, use the hosted version."}
+          </span>}
+          <button onClick={doExport} title="Download .ics calendar file for selected weekly courses" style={{padding:"4px 10px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,fontWeight:600,background:"white",color:"#374151"}}>📅 Export .ics</button>
+          <button onClick={()=>setOb(true)} title="Show guide & settings" style={{padding:"4px 8px",borderRadius:6,border:"1px solid #d1d5db",fontSize:12,background:"white",color:"#6b7280"}}>?</button>
+        </div>
+      </div>
+
+      {/* Status legend */}
+      <div style={{display:"flex",gap:10,marginBottom:6,fontSize:12,color:"#4b5563",alignItems:"center",flexWrap:"wrap"}}>
+        <span style={{fontWeight:600}}>Status:</span>
+        {ST.map(s=><span key={s.v} style={{display:"flex",alignItems:"center",gap:3}}><span style={{display:"inline-flex",alignItems:"center",justifyContent:"center",width:18,height:18,borderRadius:4,border:`1.5px solid ${s.c}`,background:`${s.c}15`,color:s.c,fontSize:11,fontWeight:700}}>{s.icon}</span>{s.l}</span>)}
+      </div>
+
+      {/* Day tabs */}
+      <div style={{display:"flex",gap:0,marginBottom:7,borderBottom:"2px solid #e5e7eb",overflowX:"auto"}}>
+        <button onClick={()=>setDayF(null)} title="Show all days" style={{background:"none",border:"none",padding:"4px 11px",fontSize:13,fontWeight:dayF===null?700:500,color:dayF===null?"#1d4ed8":"#6b7280",borderBottom:dayF===null?"2px solid #1d4ed8":"2px solid transparent",marginBottom:-2}}>All</button>
+        {DAYS.map((d,i)=>{
+          const n=visible.filter(c=>isOn(c.id)&&c.slots.some(s=>s.day===i)).length;
+          const hc=conflicts.hardPairs.filter(p=>p.day===i).length;
+          const sc=conflicts.softPairs.filter(p=>p.day===i).length;
+          return <button key={i} onClick={()=>setDayF(i)} title={`Filter to ${d} only`} style={{background:"none",border:"none",padding:"4px 11px",fontSize:13,whiteSpace:"nowrap",fontWeight:dayF===i?700:500,color:dayF===i?"#1d4ed8":hc>0?"#dc2626":sc>0?"#d97706":"#6b7280",borderBottom:dayF===i?"2px solid #1d4ed8":"2px solid transparent",marginBottom:-2}}>{d}{n>0?` (${n})`:""}{hc>0?" ⚠":sc>0?" ~":""}</button>
+        })}
+      </div>
+
+      <div className="app-flex" style={{display:"flex",flex:1,overflow:"hidden",minHeight:0}}>
+        {/* ── Sidebar ── */}
+        <div className="app-sidebar" style={{flex:`0 0 ${isMobile?"100%":sideW+"px"}`,minWidth:isMobile?"auto":200,display:"flex",flexDirection:"column",height:isMobile?(mobileGridH?"auto":"40vh"):"100%",overflow:"hidden"}}>
+          {/* ECTS panel */}
+          <div data-ects="1" style={{background:"white",border:"1px solid #e5e7eb",borderRadius:10,padding:11,marginBottom:0,overflow:"auto",position:"relative",...(ectsH?{height:ectsH,flexShrink:0}:{flexShrink:0})}}>
+            <div style={{fontSize:13,fontWeight:700,marginBottom:6}}>ECTS</div>
+            {cfg.areas.map(a=>{
+              const bl=baseline[a.key]||0;const lk=proj.locked[a.key]||0;const ly=proj.likely[a.key]||0;const cv=proj.considering[a.key]||0;
+              const v=bl+lk+ly;const total=v+cv;const over=a.cap&&total>a.cap;const spec=a.spec&&total>=a.spec;
+              const mx=a.cap||Math.max(total+4,20);
+              const sel=lk+ly;
+              return(<div key={a.key} style={{marginBottom:5}}>
+                <div style={{display:"flex",justifyContent:"space-between",fontSize:12.5,fontWeight:600}}>
+                  <span style={{color:a.cl.t}}>{a.key}</span>
+                  <span style={{color:over?"#dc2626":spec?"#059669":"#4b5563"}}>
+                    {bl>0?`${bl}+${sel}=${v}`:v}{cv>0?<span style={{color:"#8b5cf6"}}>{` (+${cv}?)`}</span>:""} LP{spec?" ✓":""}{over?` ⚠>${a.cap}`:""}
+                  </span>
+                </div>
+                <div style={{height:7,background:"#e5e7eb",borderRadius:4,overflow:"hidden",position:"relative"}}>
+                  {bl>0&&<div style={{position:"absolute",left:0,top:0,height:"100%",width:`${Math.min(100,(bl/mx)*100)}%`,background:a.cl.c,opacity:.75,transition:"width .2s"}}/>}
+                  {lk>0&&<div style={{position:"absolute",left:`${Math.min(100,(bl/mx)*100)}%`,top:0,height:"100%",width:`${Math.min(100,(lk/mx)*100)}%`,background:a.cl.c,opacity:.55,transition:"width .2s"}}/>}
+                  {ly>0&&<div style={{position:"absolute",left:`${Math.min(100,((bl+lk)/mx)*100)}%`,top:0,height:"100%",width:`${Math.min(100,(ly/mx)*100)}%`,background:a.cl.c,opacity:.3,transition:"width .2s"}}/>}
+                  {cv>0&&<div style={{position:"absolute",left:`${Math.min(100,(v/mx)*100)}%`,top:0,height:"100%",width:`${Math.min(100-Math.min(100,(v/mx)*100),(cv/mx)*100)}%`,background:a.cl.c,opacity:.15,transition:"width .2s"}}/>}
+                  {a.spec&&<div style={{position:"absolute",left:`${(a.spec/mx)*100}%`,top:0,height:"100%",width:1.5,background:"#059669"}}/>}
+                  {a.cap&&a.cap<900&&<div style={{position:"absolute",left:`${(a.cap/mx)*100}%`,top:0,height:"100%",width:1.5,background:"#dc2626"}}/>}
+                </div>
+              </div>);
+            })}
+            <div style={{fontSize:12.5,color:"#4b5563",display:"flex",justifyContent:"space-between",marginTop:3}}>
+              <span>Free Elective</span><span>{feTotal}{feCons>0?<span style={{color:"#8b5cf6"}}>{` (+${feCons}?)`}</span>:""}{cfg.feN?` / ${cfg.feN}`:""}</span>
+            </div>
+            {isMsc&&<div style={{fontSize:12.5,color:"#4b5563",display:"flex",justifyContent:"space-between"}}><span>Study Project</span><span>{(proj.locked["Study Project"]||0)+(proj.likely["Study Project"]||0)+(baseline["Study Project"]||0)}{(proj.considering["Study Project"]||0)>0?<span style={{color:"#8b5cf6"}}>{` (+${proj.considering["Study Project"]}?)`}</span>:""}</span></div>}
+            <div style={{fontSize:12.5,color:"#4b5563",display:"flex",justifyContent:"space-between"}}><span>Colloquium</span><span>{(proj.locked["Colloquium"]||0)+(proj.likely["Colloquium"]||0)}{(proj.considering["Colloquium"]||0)>0?<span style={{color:"#8b5cf6"}}>{` (+${proj.considering["Colloquium"]}?)`}</span>:""}</span></div>
+            {cfg.wp&&<div style={{marginTop:7,borderTop:"1px solid #e5e7eb",paddingTop:6,display:"grid",gridTemplateColumns:"1fr 1fr",gap:4}}>
+              <div style={{textAlign:"center",padding:3,background:"#f9fafb",borderRadius:6,border:"1px solid #e5e7eb"}}>
+                <div style={{fontWeight:800,fontSize:16,color:wpTotal>=cfg.wp?"#059669":"#b45309"}}>{wpTotal}{wpCons>0?<span style={{fontSize:11,color:"#8b5cf6"}}>{` +${wpCons}?`}</span>:""}</div>
+                <div style={{fontSize:10,color:"#6b7280"}}>/ {cfg.wp} WP</div>
+              </div>
+              <div style={{textAlign:"center",padding:3,background:"#f9fafb",borderRadius:6,border:"1px solid #e5e7eb"}}>
+                <div style={{fontWeight:800,fontSize:16,color:"#374151"}}>{selTotal}{conTotal>0?<span style={{fontSize:11,color:"#8b5cf6"}}>{` +${conTotal}?`}</span>:""}</div>
+                <div style={{fontSize:10,color:"#6b7280"}}>LP total</div>
+              </div>
+            </div>}
+
+            {/* Credit import */}
+            <div style={{marginTop:7,borderTop:"1px solid #e5e7eb",paddingTop:6}}>
+              {Object.keys(baseline).length>0?(
+                <div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+                    <span style={{fontSize:11,fontWeight:600,color:"#374151"}}>📂 Imported credits</span>
+                    <div style={{display:"flex",gap:4}}>
+                      <button onClick={()=>setShowBaselineEdit(!showBaselineEdit)} style={{fontSize:10,color:"#2563eb",background:"none",border:"none",fontWeight:500}}>{showBaselineEdit?"Hide":"Edit"}</button>
+                      <button onClick={()=>setBaseline({})} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",fontWeight:500}}>Clear</button>
+                    </div>
+                  </div>
+                  {showBaselineEdit&&<div style={{marginBottom:3}}>
+                    {[...cfg.areas.map(a=>a.key),"Free Elective","Study Project"].map(k=>(
+                      <div key={k} style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:2}}>
+                        <span style={{fontSize:11,color:"#4b5563"}}>{k}</span>
+                        <input type="number" value={baseline[k]||0} onChange={e=>setBaseline(p=>({...p,[k]:parseInt(e.target.value)||0}))} style={{width:44,padding:"2px 4px",borderRadius:4,border:"1px solid #d1d5db",fontSize:11,textAlign:"right"}}/>
+                      </div>
+                    ))}
+                  </div>}
+                </div>
+              ):(
+                <div>
+                  <label style={{display:"block",fontSize:11,color:"#4b5563",marginBottom:3,cursor:"pointer"}}>
+                    <span style={{fontWeight:600}}>📂 Import past credits</span>
+                    <span style={{display:"block",fontSize:10,color:"#6b7280"}}>Upload the official Grade Calculator (.xlsx)</span>
+                    <input type="file" accept=".xlsx,.xls" onChange={handleImport} style={{display:"none"}}/>
+                    <div style={{marginTop:4,padding:"5px 0",textAlign:"center",borderRadius:5,border:"1px dashed #d1d5db",background:"#f9fafb",fontSize:11,color:"#2563eb",fontWeight:500}}>Choose file…</div>
+                  </label>
+                  <button onClick={()=>{setBaseline({"AI/ML":0,"Psych/Lang":0,"Neuroscience":0,"Ethics/Mind":0,"Methods":0,"Free Elective":0,"Study Project":0,"Colloquium":0,"BSc Core":0});setShowBaselineEdit(true)}} style={{width:"100%",fontSize:10,color:"#6b7280",background:"none",border:"none",marginTop:2}}>or enter manually</button>
+                </div>
+              )}
+              {importError&&<div style={{fontSize:10,color:"#dc2626",marginTop:3,background:"#fef2f2",padding:"4px 6px",borderRadius:4}}>{importError}</div>}
+            </div>
+            {/* Corner drag handle */}
+            {!isMobile&&<div className="splitter-corner" onPointerDown={startDragCorner}/>}
+          </div>
+
+          {/* Vertical splitter: ECTS ↔ course list */}
+          <div className="splitter-v" onPointerDown={startDragV} onDoubleClick={resetLayout}/>
+
+          {/* Course list (scrollable) */}
+          <div style={{flex:1,overflow:"auto",padding:"0 0 4px"}}>
+
+          {/* Grouping toggle */}
+          <div style={{display:"flex",gap:3,marginBottom:5,alignItems:"center"}}>
+            <div style={{display:"flex",borderRadius:5,overflow:"hidden",border:"1px solid #d1d5db",flex:1}}>
+              <button onClick={()=>setGroupBy("area")} title="Group courses by focus area" style={{flex:1,padding:"3px 0",border:"none",fontSize:10,fontWeight:600,background:groupBy==="area"?"#1d4ed8":"white",color:groupBy==="area"?"white":"#6b7280"}}>By Area</button>
+              <button onClick={()=>setGroupBy("status")} title="Group courses by planning status" style={{flex:1,padding:"3px 0",border:"none",borderLeft:"1px solid #d1d5db",fontSize:10,fontWeight:600,background:groupBy==="status"?"#1d4ed8":"white",color:groupBy==="status"?"white":"#6b7280"}}>By Status</button>
+            </div>
+          </div>
+
+          {/* Course list */}
+          {(groupBy==="area"?isPo24:true)&&<div style={{display:"flex",gap:3,marginBottom:5}}>
+            <button onClick={expandAll} title="Expand all groups" style={{flex:1,padding:"2px 6px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9,background:"white",color:"#6b7280"}}>Expand all</button>
+            <button onClick={collapseAll} title="Collapse all groups" style={{flex:1,padding:"2px 6px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9,background:"white",color:"#6b7280"}}>Collapse all</button>
+          </div>}
+
+          {(groupBy==="area"?categories:statusGroups).map(g=>{
+            const isOpen=g.key==="dropped"?(expanded[g.key]===true):(expanded[g.key]!==false);
+            const filtW=dayF!==null?g.weekly.filter(c=>c.slots.some(s=>s.day===dayF)):g.weekly;
+            const filtB=g.block||[];
+            const hasVisible=(filtW.length+filtB.length)>0;
+            if(!hasVisible&&dayF!==null&&groupBy==="area")return null;
+            if(g.courses.length===0&&groupBy==="status")return null;
+            return(<div key={g.key} style={{marginBottom:4,background:"white",border:"1px solid #e5e7eb",borderRadius:7,overflow:"hidden"}}>
+              <button onClick={()=>toggleArea(g.key)} style={{
+                width:"100%",padding:"7px 10px",border:"none",background:g.cl.bg,
+                display:"flex",justifyContent:"space-between",alignItems:"center",
+                fontSize:14,fontWeight:700,color:g.cl.t,textAlign:"left",cursor:"pointer",
+              }}>
+                <span>{isOpen?"▾ ":"▸ "}{g.icon?g.icon+" ":""}{g.label||g.key}</span>
+                <span style={{fontWeight:500,fontSize:12,display:"flex",alignItems:"center",gap:4}}>
+                  {g.selN>0&&<span>{g.selN} · {g.selLP} LP</span>}
+                  {g.hasConf&&<span style={{color:"#dc2626"}}>⚠</span>}
+                </span>
+              </button>
+              {g.note&&isOpen&&<div style={{padding:"4px 8px",fontSize:9.5,color:"#92400e",background:"#fffbeb",lineHeight:1.4}}>{g.note}</div>}
+              {isOpen&&<div style={{padding:"2px 4px"}}>
+                {filtW.map(c=><CourseRow key={c.id} c={c} g={g}/>)}
+                {filtB.length>0&&filtW.length>0&&<div style={{borderTop:"1px dashed #d1d5db",margin:"5px 0 3px",fontSize:11,color:"#6b7280",paddingLeft:4,fontWeight:500}}>Block / no fixed time</div>}
+                {filtB.map(c=><CourseRow key={c.id} c={c} g={g}/>)}
+              </div>}
+            </div>);
+          })}
+
+          {/* Add custom course */}
+          {!showAdd?
+            <button onClick={()=>setShowAdd(true)} title="Add a custom course to the planner" style={{width:"100%",padding:"6px",borderRadius:7,border:"1px dashed #d1d5db",background:"white",fontSize:10,color:"#6b7280",marginTop:4}}>+ Add custom course</button>
+          :
+            <div style={{marginTop:4,background:"white",border:"1px solid #e5e7eb",borderRadius:7,padding:8}}>
+              <div style={{fontSize:10,fontWeight:700,marginBottom:4}}>Add custom course</div>
+              <input value={addForm.name} onChange={e=>setAddForm(p=>({...p,name:e.target.value}))} placeholder="Course name" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10,marginBottom:3}}/>
+              <div style={{display:"flex",gap:3,marginBottom:3}}>
+                <input value={addForm.short} onChange={e=>setAddForm(p=>({...p,short:e.target.value}))} placeholder="Short (auto)" style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10}}/>
+                <input type="number" value={addForm.ects} onChange={e=>setAddForm(p=>({...p,ects:e.target.value}))} style={{width:40,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10}} title="ECTS"/>
+              </div>
+              <select value={addForm.a24} onChange={e=>setAddForm(p=>({...p,a24:e.target.value,a19:e.target.value}))} style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10,marginBottom:3}}>
+                {[...cfg.areas.map(a=>a.key),"Free Elective"].map(k=><option key={k} value={k}>{k}</option>)}
+              </select>
+              <div style={{fontSize:9,fontWeight:600,marginBottom:2,color:"#6b7280"}}>Time slots</div>
+              <SlotEditor slots={addSlots} setSlots={setAddSlots}/>
+              <div style={{display:"flex",gap:4,marginTop:3}}>
+                <button onClick={addCustom} style={{flex:1,padding:"4px",borderRadius:4,border:"none",background:"#1d4ed8",color:"white",fontSize:10,fontWeight:600}}>Add</button>
+                <button onClick={()=>{setShowAdd(false);setAddSlots([])}} style={{padding:"4px 8px",borderRadius:4,border:"1px solid #d1d5db",background:"white",fontSize:10,color:"#6b7280"}}>Cancel</button>
+              </div>
+            </div>
+          }
+          </div>{/* end course list scroll */}
+        </div>{/* end sidebar */}
+
+        {/* Horizontal splitter: sidebar ↔ grid (desktop) */}
+        {!isMobile&&<div className={`splitter-h${dragging==="h"?" active":""}`} onPointerDown={startDragH} onDoubleClick={resetLayout}/>}
+
+        {/* Mobile splitter: grid ↔ sidebar (mobile only) */}
+        {isMobile&&<div className={`splitter-v${dragging==="mv"?" active":""}`} onPointerDown={startDragMV} onDoubleClick={resetLayout} style={{order:1}}/>}
+
+        {/* ── Grid ── */}
+        <div className="app-grid" style={{flex:1,minWidth:0,overflow:"auto",...(isMobile&&mobileGridH?{height:mobileGridH,flex:"none"}:{})}}>
+          <div style={{display:"grid",gridTemplateColumns:`34px repeat(${visDays.length},1fr)`,minWidth:visDays.length===1?200:400}}>
+            <div/>
+            {visDays.map(di=><div key={di} style={{textAlign:"center",fontSize:10.5,fontWeight:700,padding:"2px 0",borderBottom:"2px solid #e5e7eb"}}>{DAYS[di]}</div>)}
+            {HOURS.map(h=>(
+              <React.Fragment key={h}>
+                <div style={{fontSize:9,color:"#9ca3af",textAlign:"right",paddingRight:4,paddingTop:2,height:RH,borderTop:"1px solid #f0f0f0"}}>{h}:00</div>
+                {visDays.map(di=>{
+                  const entries=slotMap[`${di}-${h}`]||[];
+                  const starters=entries.filter(e=>e.isStart);
+                  const single=visDays.length===1;
+                  return(<div key={`${di}-${h}`} style={{height:RH,borderTop:"1px solid #f0f0f0",borderLeft:"1px solid #f0f0f0",position:"relative"}}>
+                    {starters.map(entry=>{
+                      const c=entry.course,sl=entry.slot,dur=sl.end-sl.start;
+                      const area=areaOf(c);const acl=getClForArea(area);
+                      const isHard=conflicts.hardSet.has(c.id);
+                      const isSoft=conflicts.softSet.has(c.id);
+                      const hasConf=isHard||isSoft;
+                      const isRem=pres[c.id]==="no";
+                      const isCons=status[c.id]==="considering";
+                      const st=stOf(c.id);
+                      const idx=entries.findIndex(e=>e.course.id===c.id&&e.si===entry.si);
+                      const hi=hov===c.id;
+                      return(<div key={c.id+entry.si} onClick={()=>dropCourse(c.id)} onMouseEnter={()=>setHov(c.id)} onMouseMove={e=>setMousePos({x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)} style={{
+                        position:"absolute",top:0,left:`${(idx/entries.length)*100}%`,width:`${100/entries.length}%`,
+                        height:dur*RH-2,
+                        background:hi?`${acl.c}18`:isHard?"#fef2f2":isSoft?"#fffbeb":acl.bg,
+                        border:`1.5px solid ${isHard?"#ef4444":isSoft?"#f59e0b":hi?acl.c:acl.c+"77"}`,
+                        borderRadius:4,padding:"2px 3px",fontSize:single?10.5:8.5,lineHeight:1.2,overflow:"hidden",
+                        zIndex:hi?10:2,cursor:"pointer",opacity:isRem?.55:isCons?.5:1,transition:"all .12s",
+                        boxShadow:hi?`0 0 0 2px ${acl.c}33`:isHard?"0 0 0 1.5px rgba(239,68,68,.2)":isSoft?"0 0 0 1.5px rgba(245,158,11,.2)":"none",
+                      }}>
+                        <div style={{fontWeight:700,color:isHard?"#dc2626":isSoft?"#92400e":acl.t,display:"flex",alignItems:"center",gap:2}}>
+                          {isHard&&<span style={{fontSize:7}}>⚠</span>}
+                          {isSoft&&<span style={{fontSize:7}}>~</span>}
+                          {single?c.name:c.short}{sl.label?` ${sl.label}`:""}
+                          {isRem&&<span style={{fontSize:7,opacity:.7}}>💻</span>}
+                          {st&&<span style={{fontSize:7,color:st.c,marginLeft:"auto"}}>{st.icon}</span>}
+                        </div>
+                        {dur>=2&&(single||entries.length<=2)&&<div style={{color:"#6b7280",fontSize:single?9.5:7.5}}>{c.ects} LP</div>}
+                        {single&&c.note&&dur>=2&&<div style={{color:"#92400e",fontSize:8.5,fontStyle:"italic"}}>{c.note}</div>}
+                      </div>);
+                    })}
+                  </div>);
+                })}
+              </React.Fragment>
+            ))}
+          </div>
+
+          {/* Hard Conflicts */}
+      {fHardConf.length>0&&(
+        <div style={{marginTop:8,padding:"10px 14px",background:"#fef2f2",borderRadius:8,fontSize:13,color:"#991b1b",lineHeight:1.5}}>
+          <div style={{fontWeight:700,marginBottom:3,fontSize:14}}>⚠ Conflicts{dayF!==null?` (${DAYS[dayF]})`:""} — locked/likely, both in-person/unclear:</div>
+          {fHardConf.map((p,i)=>(
+            <div key={i} style={{marginBottom:1}}>
+              {DAYS[p.day]} {p.from}–{p.to}h: <strong>{p.a.short}</strong> vs <strong>{p.b.short}</strong>
+              {" — "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.a.id)}>drop {p.a.short}</span>
+              {" | "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.b.id)}>drop {p.b.short}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Soft Conflicts */}
+      {fSoftConf.length>0&&(
+        <div style={{marginTop:4,padding:"10px 14px",background:"#fffbeb",borderRadius:8,fontSize:13,color:"#92400e",lineHeight:1.5}}>
+          <div style={{fontWeight:700,marginBottom:3,fontSize:14}}>~ Potential conflicts{dayF!==null?` (${DAYS[dayF]})`:""} — both likely:</div>
+          {fSoftConf.map((p,i)=>(
+            <div key={i} style={{marginBottom:1}}>
+              {DAYS[p.day]} {p.from}–{p.to}h: <strong>{p.a.short}</strong> vs <strong>{p.b.short}</strong>
+              {" — "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.a.id)}>drop {p.a.short}</span>
+              {" | "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.b.id)}>drop {p.b.short}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+        </div>{/* end grid scroll */}
+      </div>{/* end flex */}
+
+      {/* Footer */}
+      <div style={{fontSize:11.5,color:"#6b7280",lineHeight:1.6,borderTop:"1px solid #e5e7eb",padding:"6px 0",display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",flexShrink:0}}>
+        <div>
+          💾 Auto-saved in this browser only. "Share" copies a link (also use it to sync between devices). "Export .ics" downloads a calendar file.
+          <span style={{color:"#d97706"}}> ⚠ Unofficial student tool. Verify with Stud.IP & PO.</span>
+          <span style={{color:"#991b1b"}}> 📅 Sunset: Nov 30, 2026.</span>
+        </div>
+        <div style={{display:"flex",gap:4,flexShrink:0}}>
+          <button onClick={reset} title="Remove all course selections and statuses. Your imported credits and custom courses are kept." style={{background:"#fffbeb",color:"#b45309",border:"1px solid #fde68a",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:600}}>Clear course plan</button>
+          {!confirmDelete?
+            <button onClick={()=>setConfirmDelete(true)} title="Permanently delete everything: selections, imported credits, custom courses, and all local data" style={{background:"#fef2f2",color:"#dc2626",border:"1px solid #fecaca",borderRadius:5,padding:"4px 10px",fontSize:11,fontWeight:500}}>Delete all data</button>
+          :
+            <div style={{display:"flex",gap:3,alignItems:"center",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:5,padding:"4px 8px"}}>
+              <span style={{fontSize:11,color:"#991b1b",fontWeight:500}}>Permanently removes all local data. Only recoverable via saved share link.</span>
+              <button onClick={deleteAllData} style={{background:"#dc2626",color:"white",border:"none",borderRadius:4,padding:"3px 8px",fontSize:11,fontWeight:700,whiteSpace:"nowrap"}}>Yes, delete</button>
+              <button onClick={()=>setConfirmDelete(false)} style={{background:"white",color:"#6b7280",border:"1px solid #d1d5db",borderRadius:4,padding:"3px 8px",fontSize:11,whiteSpace:"nowrap"}}>Cancel</button>
+            </div>
+          }
+        </div>
+      </div>
+
+      {/* Floating tooltip */}
+      {hov&&(()=>{const c=courses.find(x=>x.id===hov);if(!c)return null;const area=areaOf(c);const acl=getClForArea(area);const st=stOf(c.id);
+        const tx=Math.min(mousePos.x+14,window.innerWidth-360);
+        const ty=Math.min(mousePos.y+14,window.innerHeight-80);
+        return(<div style={{position:"fixed",left:tx,top:ty,zIndex:1000,background:"white",borderRadius:10,padding:"10px 14px",fontSize:14,lineHeight:1.6,maxWidth:360,border:"1px solid #bfdbfe",boxShadow:"0 4px 20px rgba(0,0,0,.12)",pointerEvents:"none"}}>
+          <div style={{fontWeight:700,color:"#1f2937",marginBottom:2}}>{c.name}</div>
+          <div style={{fontSize:13,color:"#4b5563"}}>{c.nr?`${c.nr} · `:""}{c.ects||"?"} LP · <span style={{color:acl.t,fontWeight:600}}>{area}</span>{st&&<span style={{color:st.c,fontWeight:600}}> · {st.l}</span>}</div>
+          {c.note&&<div style={{fontSize:12,color:"#92400e",fontStyle:"italic",marginTop:2}}>{c.note}</div>}
+          {c.slots.length>0&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{c.slots.map((s,i)=>`${DAYS[s.day]} ${s.start}:00–${s.end}:00${s.label?" ("+s.label+")":""}`).join(", ")}</div>}
+          {c.slots.length===0&&<div style={{fontSize:12,color:"#9ca3af",marginTop:2}}>No weekly schedule — check Stud.IP</div>}
+        </div>);
+      })()}
+    </div>
+  );
+}
+// ── Error boundary: catches render errors and shows them instead of white screen ──
+class EB extends React.Component{
+  constructor(p){super(p);this.state={err:null,info:null}}
+  static getDerivedStateFromError(e){return{err:e}}
+  componentDidCatch(e,i){this.setState({info:i})}
+  render(){if(this.state.err)return React.createElement("div",{style:{padding:40,fontFamily:"monospace",color:"#dc2626"}},
+    React.createElement("h2",null,"Something went wrong"),
+    React.createElement("pre",{style:{whiteSpace:"pre-wrap",fontSize:13,marginTop:12}},String(this.state.err)),
+    this.state.info&&React.createElement("pre",{style:{whiteSpace:"pre-wrap",fontSize:11,marginTop:8,color:"#6b7280"}},this.state.info.componentStack));return this.props.children}
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<EB><App/></EB>);
+</script>
+</body>
+</html>
