@@ -317,7 +317,7 @@ function App(){
   const [groupBy,setGroupBy]=useState("area"); // "area" | "status"
   const [showAdd,setShowAdd]=useState(false);
   const [addSlots,setAddSlots]=useState([]);
-  const [addForm,setAddForm]=useState({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective"});
+  const [addForm,setAddForm]=useState({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective",room:""});
   const [nextCid,setNextCid]=useState(1);
   // Edit/add course form state
   const [editingId,setEditingId]=useState(null);
@@ -347,7 +347,7 @@ function App(){
   const startDragH=(e)=>{
     e.preventDefault();setDragging("h");
     const startX=e.clientX,startW=sideW;
-    const onMove=(e2)=>setSideW(Math.max(200,Math.min(600,startW+e2.clientX-startX)));
+    const onMove=(e2)=>setSideW(Math.max(200,Math.min(Math.round(window.innerWidth*0.66),startW+e2.clientX-startX)));
     const onUp=()=>{setDragging(null);document.removeEventListener("pointermove",onMove);document.removeEventListener("pointerup",onUp)};
     document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp);
   };
@@ -368,7 +368,7 @@ function App(){
   const startDragCorner=(e)=>{
     e.preventDefault();setDragging("corner");
     const startX=e.clientX,startY=e.clientY,startW=sideW,startH=ectsH||e.target.closest(".app-sidebar")?.querySelector("[data-ects]")?.offsetHeight||200;
-    const onMove=(e2)=>{setSideW(Math.max(200,Math.min(600,startW+e2.clientX-startX)));setEctsH(Math.max(80,Math.min(window.innerHeight*0.5,startH+e2.clientY-startY)))};
+    const onMove=(e2)=>{setSideW(Math.max(200,Math.min(Math.round(window.innerWidth*0.66),startW+e2.clientX-startX)));setEctsH(Math.max(80,Math.min(window.innerHeight*0.5,startH+e2.clientY-startY)))};
     const onUp=()=>{setDragging(null);document.removeEventListener("pointermove",onMove);document.removeEventListener("pointerup",onUp)};
     document.addEventListener("pointermove",onMove);document.addEventListener("pointerup",onUp);
   };
@@ -435,12 +435,12 @@ function App(){
     const f=addForm;if(!f.name.trim())return;
     const id=`custom-${nextCid}`;
     const nc={id,name:f.name.trim(),short:f.short.trim()||f.name.trim().split(/\s+/)[0],ects:parseInt(f.ects)||4,nr:"",
-      deg:"both",cat:"course",a24:f.a24,a19:f.a19,slots:addSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end)})),note:"Custom",isCustom:true};
+      deg:"both",cat:"course",a24:f.a24,a19:f.a19,room:f.room||"",slots:addSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end)})),note:"Custom",isCustom:true};
     setCustom(p=>[...p,nc]);
     setStatus(p=>({...p,[id]:"considering"}));
     setPres(p=>({...p,[id]:"unclear"}));
     setNextCid(n=>n+1);
-    setAddForm({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective"});
+    setAddForm({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective",room:""});
     setAddSlots([]);
     setShowAdd(false);
   };
@@ -454,13 +454,13 @@ function App(){
   // Edit any course
   const startEdit=(c)=>{
     setEditingId(c.id);
-    setEditForm({name:c.name,short:c.short,ects:c.ects,a24:c.a24||"Free Elective",a19:c.a19||"Free Elective",nr:c.nr||""});
+    setEditForm({name:c.name,short:c.short,ects:c.ects,a24:c.a24||"Free Elective",a19:c.a19||"Free Elective",nr:c.nr||"",room:c.room||""});
     setEditSlots(c.slots.map(s=>({day:String(s.day),start:String(s.start),end:String(s.end),label:s.label||""})));
   };
   const saveEdit=()=>{
     if(!editForm||!editingId)return;
     const f=editForm;
-    const patch={name:f.name.trim(),short:f.short.trim(),ects:parseInt(f.ects)||4,a24:f.a24,a19:f.a19,nr:f.nr,
+    const patch={name:f.name.trim(),short:f.short.trim(),ects:parseInt(f.ects)||4,a24:f.a24,a19:f.a19,nr:f.nr,room:f.room.trim(),
       slots:editSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end),...(s.label?{label:s.label}:{})}))};
     // For custom courses, update the custom array directly
     const isCustom=editingId.startsWith("custom-");
@@ -613,20 +613,20 @@ function App(){
     <div style={{marginBottom:3}}>
       {slots.map((sl,i)=>(
         <div key={i} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
-          <select value={sl.day} onChange={e=>{const n=[...slots];n[i]={...n[i],day:e.target.value};setSlots(n)}} style={{flex:1,padding:"2px 4px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9}}>
+          <select value={sl.day} onChange={e=>{const n=[...slots];n[i]={...n[i],day:e.target.value};setSlots(n)}} style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
             {DAYS.map((d,di)=><option key={di} value={di}>{d}</option>)}
           </select>
-          <select value={sl.start} onChange={e=>{const n=[...slots];n[i]={...n[i],start:e.target.value};setSlots(n)}} style={{width:44,padding:"2px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9}}>
+          <select value={sl.start} onChange={e=>{const n=[...slots];n[i]={...n[i],start:e.target.value};setSlots(n)}} style={{width:52,padding:"3px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
             {HOURS.map(h=><option key={h} value={h}>{h}:00</option>)}
           </select>
           <span style={{fontSize:9,color:"#9ca3af"}}>–</span>
-          <select value={sl.end} onChange={e=>{const n=[...slots];n[i]={...n[i],end:e.target.value};setSlots(n)}} style={{width:44,padding:"2px",borderRadius:4,border:"1px solid #d1d5db",fontSize:9}}>
+          <select value={sl.end} onChange={e=>{const n=[...slots];n[i]={...n[i],end:e.target.value};setSlots(n)}} style={{width:52,padding:"3px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
             {[...HOURS.filter(h=>h>parseInt(sl.start)),20].map(h=><option key={h} value={h}>{h}:00</option>)}
           </select>
           <button onClick={()=>setSlots(slots.filter((_,j)=>j!==i))} style={{width:14,height:14,borderRadius:2,border:"none",background:"#fef2f2",color:"#dc2626",fontSize:8,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
       ))}
-      <button onClick={()=>setSlots([...slots,{day:"0",start:"10",end:"12"}])} style={{fontSize:9,color:"#2563eb",background:"none",border:"none",padding:"2px 0"}}>+ Add time slot</button>
+      <button onClick={()=>setSlots([...slots,{day:"0",start:"10",end:"12"}])} style={{fontSize:12,color:"#2563eb",background:"none",border:"none",padding:"2px 0"}}>+ Add time slot</button>
     </div>
   );
 
@@ -643,22 +643,23 @@ function App(){
     // Inline edit form
     if(editingId===c.id)return(
       <div style={{padding:6,background:"#f8fafc",borderRadius:5,marginBottom:2,border:"1px solid #e5e7eb"}}>
-        <div style={{fontSize:9,fontWeight:700,marginBottom:3,display:"flex",justifyContent:"space-between"}}>
+        <div style={{fontSize:12,fontWeight:700,marginBottom:4,display:"flex",justifyContent:"space-between"}}>
           <span>Edit: {c.short}</span>
-          {isEdited&&!c.isCustom&&<button onClick={()=>{resetEdit(c.id);cancelEdit()}} style={{fontSize:8,color:"#d97706",background:"none",border:"none"}} title="Reset to original data">Reset</button>}
+          {isEdited&&!c.isCustom&&<button onClick={()=>{resetEdit(c.id);cancelEdit()}} style={{fontSize:11,color:"#d97706",background:"none",border:"none"}} title="Reset to original data">Reset</button>}
         </div>
-        <input value={editForm.name} onChange={e=>setEditForm(p=>({...p,name:e.target.value}))} placeholder="Name" style={{width:"100%",padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9,marginBottom:2}}/>
-        <div style={{display:"flex",gap:2,marginBottom:2}}>
-          <input value={editForm.short} onChange={e=>setEditForm(p=>({...p,short:e.target.value}))} placeholder="Short" style={{flex:1,padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9}}/>
-          <input type="number" value={editForm.ects} onChange={e=>setEditForm(p=>({...p,ects:e.target.value}))} style={{width:36,padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9}} title="ECTS"/>
+        <input value={editForm.name} onChange={e=>setEditForm(p=>({...p,name:e.target.value}))} placeholder="Name" style={{width:"100%",padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
+        <div style={{display:"flex",gap:3,marginBottom:3}}>
+          <input value={editForm.short} onChange={e=>setEditForm(p=>({...p,short:e.target.value}))} placeholder="Short" style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}/>
+          <input type="number" value={editForm.ects} onChange={e=>setEditForm(p=>({...p,ects:e.target.value}))} style={{width:44,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}} title="ECTS"/>
         </div>
-        <select value={editForm.a24} onChange={e=>setEditForm(p=>({...p,a24:e.target.value,a19:e.target.value}))} style={{width:"100%",padding:"2px 4px",borderRadius:3,border:"1px solid #d1d5db",fontSize:9,marginBottom:2}}>
+        <select value={editForm.a24} onChange={e=>setEditForm(p=>({...p,a24:e.target.value,a19:e.target.value}))} style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}>
           {[...cfg.areas.map(a=>a.key),"Free Elective","Study Project","Colloquium","BSc Core"].map(k=><option key={k} value={k}>{k}</option>)}
         </select>
+        <input value={editForm.room} onChange={e=>setEditForm(p=>({...p,room:e.target.value}))} placeholder="Room (e.g. 93/E31)" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
         <SlotEditor slots={editSlots} setSlots={setEditSlots}/>
         <div style={{display:"flex",gap:3,marginTop:2}}>
-          <button onClick={saveEdit} style={{flex:1,padding:"3px",borderRadius:3,border:"none",background:"#1d4ed8",color:"white",fontSize:9,fontWeight:600}}>Save</button>
-          <button onClick={cancelEdit} style={{padding:"3px 6px",borderRadius:3,border:"1px solid #d1d5db",background:"white",fontSize:9,color:"#6b7280"}}>Cancel</button>
+          <button onClick={saveEdit} style={{flex:1,padding:"3px",borderRadius:3,border:"none",background:"#1d4ed8",color:"white",fontSize:12,fontWeight:600}}>Save</button>
+          <button onClick={cancelEdit} style={{padding:"3px 6px",borderRadius:3,border:"1px solid #d1d5db",background:"white",fontSize:12,color:"#6b7280"}}>Cancel</button>
         </div>
       </div>
     );
@@ -744,7 +745,7 @@ function App(){
           <div style={{marginBottom:3}}>3. <strong>Track ECTS</strong> — the sidebar shows LP per focus area. Green line = specialization threshold (20 LP). Red line = cap (32 LP).</div>
           <div style={{marginBottom:3}}>4. <strong>Import credits</strong> — upload the official Grade Calculator spreadsheet (.xlsx from cs-mentoring@uos.de) to include your already-completed LP in the projections.</div>
           <div style={{marginBottom:3}}>5. <strong>Export & share</strong> — download an .ics calendar file, or copy a link. Since there are no accounts, the share link is also how you transfer your plan to another device or back it up. "Share" excludes your personal credits; "Share + Credits" includes them.</div>
-          <div style={{marginBottom:3}}>6. <strong>Edit courses</strong> — hover over any course and click ✎ to correct its name, ECTS, area, or time slots. Changes are saved locally.</div>
+          <div style={{marginBottom:3}}>6. <strong>Edit courses</strong> — hover over any course and click ✎ to correct its name, ECTS, area, room, or time slots. Changes are saved locally.</div>
           <div>7. <strong>Custom courses</strong> — use the "+ Add custom course" button at the bottom of the sidebar to add courses not in the catalog.</div>
         </div>
 
@@ -973,18 +974,19 @@ function App(){
           :
             <div style={{marginTop:4,background:"white",border:"1px solid #e5e7eb",borderRadius:7,padding:8}}>
               <div style={{fontSize:10,fontWeight:700,marginBottom:4}}>Add custom course</div>
-              <input value={addForm.name} onChange={e=>setAddForm(p=>({...p,name:e.target.value}))} placeholder="Course name" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10,marginBottom:3}}/>
+              <input value={addForm.name} onChange={e=>setAddForm(p=>({...p,name:e.target.value}))} placeholder="Course name" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
               <div style={{display:"flex",gap:3,marginBottom:3}}>
-                <input value={addForm.short} onChange={e=>setAddForm(p=>({...p,short:e.target.value}))} placeholder="Short (auto)" style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10}}/>
-                <input type="number" value={addForm.ects} onChange={e=>setAddForm(p=>({...p,ects:e.target.value}))} style={{width:40,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10}} title="ECTS"/>
+                <input value={addForm.short} onChange={e=>setAddForm(p=>({...p,short:e.target.value}))} placeholder="Short (auto)" style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}/>
+                <input type="number" value={addForm.ects} onChange={e=>setAddForm(p=>({...p,ects:e.target.value}))} style={{width:48,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}} title="ECTS"/>
               </div>
               <select value={addForm.a24} onChange={e=>setAddForm(p=>({...p,a24:e.target.value,a19:e.target.value}))} style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:10,marginBottom:3}}>
                 {[...cfg.areas.map(a=>a.key),"Free Elective"].map(k=><option key={k} value={k}>{k}</option>)}
               </select>
-              <div style={{fontSize:9,fontWeight:600,marginBottom:2,color:"#6b7280"}}>Time slots</div>
+              <input value={addForm.room||""} onChange={e=>setAddForm(p=>({...p,room:e.target.value}))} placeholder="Room (e.g. 93/E31)" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
+              <div style={{fontSize:11,fontWeight:600,marginBottom:2,color:"#6b7280"}}>Time slots</div>
               <SlotEditor slots={addSlots} setSlots={setAddSlots}/>
               <div style={{display:"flex",gap:4,marginTop:3}}>
-                <button onClick={addCustom} style={{flex:1,padding:"4px",borderRadius:4,border:"none",background:"#1d4ed8",color:"white",fontSize:10,fontWeight:600}}>Add</button>
+                <button onClick={addCustom} style={{flex:1,padding:"4px",borderRadius:4,border:"none",background:"#1d4ed8",color:"white",fontSize:12,fontWeight:600}}>Add</button>
                 <button onClick={()=>{setShowAdd(false);setAddSlots([])}} style={{padding:"4px 8px",borderRadius:4,border:"1px solid #d1d5db",background:"white",fontSize:10,color:"#6b7280"}}>Cancel</button>
               </div>
             </div>
@@ -1109,6 +1111,7 @@ function App(){
           <div style={{fontSize:13,color:"#4b5563"}}>{c.nr?`${c.nr} · `:""}{c.ects||"?"} LP · <span style={{color:acl.t,fontWeight:600}}>{area}</span>{st&&<span style={{color:st.c,fontWeight:600}}> · {st.l}</span>}</div>
           {c.note&&<div style={{fontSize:12,color:"#92400e",fontStyle:"italic",marginTop:2}}>{c.note}</div>}
           {c.slots.length>0&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{c.slots.map((s,i)=>`${DAYS[s.day]} ${s.start}:00–${s.end}:00${s.label?" ("+s.label+")":""}`).join(", ")}</div>}
+          {c.room&&<div style={{fontSize:12,color:"#4b5563",marginTop:2}}>Room: {c.room}</div>}
           {c.slots.length===0&&<div style={{fontSize:12,color:"#9ca3af",marginTop:2}}>No weekly schedule — check Stud.IP</div>}
         </div>);
       })()}

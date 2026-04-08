@@ -62,6 +62,66 @@ To create a version for a future semester:
 3. Update the title and text references to "SoSe 2026"
 4. Update the sunset notice date
 
+### How to get course data from Stud.IP
+
+You need a Stud.IP account (all enrolled students have one).
+
+1. Go to [studip.uni-osnabrueck.de](https://studip.uni-osnabrueck.de) and sign in
+2. Click **Search** in the top navigation bar
+3. Switch to the **Course directory** tab
+4. Navigate: Universit&auml;t Osnabr&uuml;ck &rarr; Veranstaltungen &rarr; **Cognitive Science**
+5. You'll see Bachelor-Programm and Master-Programm listed
+6. **Open Bachelor and Master in separate browser tabs**
+7. Make sure the correct semester is selected on the left sidebar
+8. On the left sidebar, under **Suchergebnis gruppieren** (group results by), select **Area** &mdash; this groups courses by their module abbreviation (e.g. CS24-MWP-NI-x), which tells you which focus area each course belongs to
+9. Under "Actions" on the left sidebar, click **Download des Ergebnisses** &mdash; this downloads an `.xls` file with all courses
+10. Do this for both Bachelor and Master tabs
+
+The `.xls` files contain: course name, course number, schedule, and instructors. When grouped by area, the module abbreviations are included. You'll still need to add ECTS values manually &mdash; check the Pr&uuml;fungsordnung or the module directory in Stud.IP (Course directory &rarr; Module index).
+
+### Module abbreviations reference (MSc PO 2024)
+
+> **Note:** This table is for **MSc PO 2024** only. If you're working with BSc or PO 2019/20, you'll need to find the equivalent module mappings in the relevant Pr&uuml;fungsordnung.
+
+**AI/ML** (planner abbreviations: NI, AI, NAI, CL, CV)
+
+| Stud.IP code | Planner | Module |
+|-------------|---------|--------|
+| CS24-MWP-NI-x | NI | Neuroinformatics |
+| CS24-MWP-AI-x | AI | Artificial Intelligence |
+| CS24-MWP-NAI-x | NAI | NeuroAI |
+| CS24-MWP-CL-x | CL | Computational Linguistics |
+| CS24-MWP-CV-x | CV | Computer Vision |
+
+**Psych/Lang** (planner abbreviations: CMP, CBC, LING)
+
+| Stud.IP code | Planner | Module |
+|-------------|---------|--------|
+| CS24-MWP-CMP-x | CMP | Cognitive Modeling and Psychology |
+| CS24-MWP-CBC-x | CBC | Comparative Bio-Cognition |
+| CS24-MWP-LING-x | LING | Theoretical and Experimental Linguistics |
+
+**Neuroscience** (planner abbreviation: CNS)
+
+| Stud.IP code | Planner | Module |
+|-------------|---------|--------|
+| CS24-MWP-CNS-x | CNS | (Computational) Neuroscience |
+
+**Ethics/Mind** (planner abbreviations: EAI, PHIL)
+
+| Stud.IP code | Planner | Module |
+|-------------|---------|--------|
+| CS24-MWP-EAI-x | EAI | Ethics of Artificial Intelligence |
+| CS24-MWP-PHIL-x | PHIL | Philosophy of Mind and Cognition |
+
+**Methods** (planner abbreviation: MCS, max 4 ECTS)
+
+| Stud.IP code | Planner | Module |
+|-------------|---------|--------|
+| CS24-MWP-MCS | MCS | Methods of Cognitive Science |
+
+Specialization: &ge;20 ECTS in one focus area. Cap: &le;32 ECTS per focus area.
+
 ---
 
 ## Versioning and changelogs
