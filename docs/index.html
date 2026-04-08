@@ -551,7 +551,7 @@ function App(){
 
   const toggleArea=(key)=>setExpanded(p=>({...p,[key]:!p[key]}));
   const expandAll=()=>{const e={};categories.forEach(g=>{e[g.key]=true});setExpanded(e)};
-  const collapseAll=()=>setExpanded({});
+  const collapseAll=()=>{const e={};[...categories,...statusGroups].forEach(g=>{e[g.key]=false});setExpanded(e)};
 
   // Build area-based categories
   const categories=useMemo(()=>{
