@@ -375,6 +375,7 @@ function App(){
   const [importError,setImportError]=useState(null);
   const [showRef,setShowRef]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
+  const [gridMenu,setGridMenu]=useState(null); // {id,x,y} — context menu on grid click
 
   const isOn=(id)=>!!status[id]&&status[id]!=="dropped";
   const stOf=(id)=>ST.find(s=>s.v===status[id])||null;
@@ -1024,7 +1025,7 @@ function App(){
                       const st=stOf(c.id);
                       const idx=entries.findIndex(e=>e.course.id===c.id&&e.si===entry.si);
                       const hi=hov===c.id;
-                      return(<div key={c.id+entry.si} onClick={()=>dropCourse(c.id)} onMouseEnter={()=>setHov(c.id)} onMouseMove={e=>setMousePos({x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)} style={{
+                      return(<div key={c.id+entry.si} onClick={e=>{e.stopPropagation();setGridMenu({id:c.id,x:e.clientX,y:e.clientY})}} onMouseEnter={()=>setHov(c.id)} onMouseMove={e=>setMousePos({x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)} style={{
                         position:"absolute",top:0,left:`${(idx/entries.length)*100}%`,width:`${100/entries.length}%`,
                         height:dur*RH-2,
                         background:hi?`${acl.c}18`:isHard?"#fef2f2":isSoft?"#fffbeb":acl.bg,
@@ -1101,6 +1102,28 @@ function App(){
           }
         </div>
       </div>
+
+      {/* Grid click menu */}
+      {gridMenu&&(()=>{
+        const c=courses.find(x=>x.id===gridMenu.id);if(!c)return null;
+        const mx=Math.min(gridMenu.x,window.innerWidth-170);
+        const my=Math.min(gridMenu.y,window.innerHeight-180);
+        const pick=(v)=>{if(v)setSt(gridMenu.id,v);else dropCourse(gridMenu.id);setGridMenu(null)};
+        return(<>
+          <div onClick={()=>setGridMenu(null)} style={{position:"fixed",inset:0,zIndex:999}}/>
+          <div style={{position:"fixed",left:mx,top:my,zIndex:1000,background:"white",borderRadius:8,padding:"4px",boxShadow:"0 4px 20px rgba(0,0,0,.15)",border:"1px solid #e5e7eb",minWidth:150}}>
+            <div style={{padding:"4px 8px",fontSize:11,color:"#9ca3af",fontWeight:600,borderBottom:"1px solid #f3f4f6",marginBottom:2}}>{c.short}</div>
+            <button onClick={()=>pick(null)} style={{display:"flex",alignItems:"center",gap:6,width:"100%",padding:"6px 8px",border:"none",background:!status[gridMenu.id]?"#f3f4f6":"white",borderRadius:4,fontSize:13,color:"#374151",textAlign:"left",cursor:"pointer"}}>
+              <span style={{width:18,height:18,borderRadius:4,border:"1.5px solid #d1d5db",display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,background:"white"}}></span> Not selected
+            </button>
+            {ST.map(s=>(
+              <button key={s.v} onClick={()=>pick(s.v)} style={{display:"flex",alignItems:"center",gap:6,width:"100%",padding:"6px 8px",border:"none",background:status[gridMenu.id]===s.v?`${s.c}10`:"white",borderRadius:4,fontSize:13,color:"#374151",textAlign:"left",cursor:"pointer"}}>
+                <span style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${s.c}`,background:`${s.c}15`,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:10,color:s.c,fontWeight:700}}>{s.icon}</span> {s.l}
+              </button>
+            ))}
+          </div>
+        </>);
+      })()}
 
       {/* Floating tooltip */}
       {hov&&(()=>{const c=courses.find(x=>x.id===hov);if(!c)return null;const area=areaOf(c);const acl=getClForArea(area);const st=stOf(c.id);
