@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CogSci Schedule Planner · SoSe 2026 · Uni Osnabrück</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.9/babel.min.js"></script>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body,#root{height:100%;overflow:hidden}
+body{font-family:'DM Sans',system-ui,sans-serif;background:#f5f6f8;color:#1a1d23;line-height:1.4}
+button,select,input{font-family:inherit;cursor:pointer}
+::-webkit-scrollbar{width:5px;height:5px}::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:3px}
+.splitter-h{width:6px;cursor:col-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none}
+.splitter-h:hover,.splitter-h.active{background:#e5e7eb}
+.splitter-h::after{content:'';width:2px;height:32px;background:#d1d5db;border-radius:1px}
+.splitter-v{height:6px;cursor:row-resize;flex-shrink:0;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none}
+.splitter-v:hover,.splitter-v.active{background:#e5e7eb}
+.splitter-v::after{content:'';height:2px;width:32px;background:#d1d5db;border-radius:1px}
+.splitter-corner{width:10px;height:10px;cursor:nwse-resize;position:absolute;right:-3px;bottom:-3px;z-index:5;display:flex;align-items:center;justify-content:center;user-select:none;touch-action:none}
+.splitter-corner::after{content:'';width:6px;height:6px;border-right:2px solid #d1d5db;border-bottom:2px solid #d1d5db;border-radius:0 0 2px 0}
+.splitter-corner:hover::after{border-color:#9ca3af}
+@media(max-width:768px){
+  .app-flex{flex-direction:column!important}
+  .app-sidebar{flex:none!important;width:100%!important;order:2!important}
+  .app-grid{order:1!important}
+  .splitter-h{display:none!important}
+  .splitter-corner{display:none!important}
+}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+{SCRIPT_CONTENT}
+</script>
+</body>
+</html>

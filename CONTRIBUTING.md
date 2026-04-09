@@ -13,7 +13,7 @@ If you find incorrect course data (wrong time, wrong ECTS, wrong area mapping), 
 
 ### Fix course data
 
-The course data lives inside `docs/index.html` in a JavaScript array called `const C = [...]`. Each course looks like this:
+The course data lives in `src/data/courses.js` (and gets built into `docs/index.html`) in a JavaScript array called `const C = [...]`. Each course looks like this:
 
 ```javascript
 {
@@ -26,28 +26,29 @@ The course data lives inside `docs/index.html` in a JavaScript array called `con
   cat: "course",                // "course", "sp", "colloquium", or "bsc-core"
   a24: "AI/ML",                 // PO 2024 focus area
   a19: "AI",                    // PO 2019/20 area
+  room: "93/E31",               // Room (optional, course-level fallback)
   slots: [                      // Weekly time slots (empty array = block/no fixed time)
-    { day: 0, start: 14, end: 16 },  // Monday 14:00-16:00
-    { day: 4, start: 10, end: 12 }   // Friday 10:00-12:00
+    { day: 0, start: 14, end: 16, room: "93/E31" },  // Monday 14:00-16:00 (per-slot room overrides course-level)
+    { day: 4, start: 10, end: 12 }                    // Friday 10:00-12:00 (falls back to course-level room)
   ]
 }
 ```
 
 Days are numbered 0-4 (Monday-Friday). Times are in 24h format (integers).
 
-To fix a course: edit the entry in the `const C` array, test by opening the file in a browser, then submit a pull request.
+To fix a course: edit the entry in `src/data/courses.js`, run `python build.py`, test by opening `docs/index.html` in a browser, then submit a pull request.
 
 ### Add a feature
 
-The entire app is a single HTML file with inline React (JSX transpiled by Babel in the browser). There's no build step — just edit the file and refresh.
+The app's source lives in `src/` and is built into `docs/index.html` by running `python build.py`. See [DEVELOPMENT.md](DEVELOPMENT.md) for the full source file structure.
 
 **Tech stack:**
 - React 18 (via CDN)
 - Babel Standalone (via CDN, transpiles JSX in-browser)
 - SheetJS (via CDN, for XLSX import)
-- No other dependencies
+- Python build script (concatenates source files into the single deployed HTML)
 
-If you're new to React: the app is one big `function App()` component in `docs/index.html`. State is managed with `useState` hooks. The UI is built with inline styles (no CSS framework). The code has section-level comments (`// ──`) to help you navigate.
+If you're new to React: the main component is `function App()` in `src/App.jsx`. State is managed with `useState` hooks. The UI is built with inline styles (no CSS framework). Constants and course data live in `src/data/`, utilities in `src/utils/`.
 
 **Before submitting a feature PR:**
 1. Make sure the file still opens correctly in a browser (no white screen)

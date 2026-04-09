@@ -18,15 +18,38 @@ This guide is for people who want to **modify the code**, run helper scripts, or
 
 ---
 
-## How the app works (no build step)
+## How the app works
 
-The planner is a **single HTML file** (`docs/index.html`) that contains all HTML, CSS, and JavaScript inline. It loads three libraries from CDNs (no local install needed):
+The planner's source code lives in `src/` as multiple files. A Python build script (`build.py`) concatenates them into the single deployed file `docs/index.html`. The app loads three libraries from CDNs (no local install needed):
 
 - **React 18** &mdash; UI framework
 - **Babel Standalone** &mdash; compiles JSX (React's HTML-like syntax) in the browser
 - **SheetJS** &mdash; parses `.xlsx` files for the credit import feature
 
-To develop: edit `docs/index.html` in any text editor, save, and refresh the browser. That's the entire workflow. No `npm run build`, no webpack, no compilation step.
+### Development workflow
+
+1. Edit source files in `src/` (not `docs/index.html` directly)
+2. Run the build script: `python build.py` (or `.venv/bin/python build.py`)
+3. Open `docs/index.html` in a browser to test
+4. Commit both the source files and the generated `docs/index.html`
+
+### Source file structure
+
+```
+src/
+  template.html          # HTML shell (head, style, CDN scripts, {SCRIPT_CONTENT} placeholder)
+  data/
+    constants.js         # Days, hours, colors, area definitions, degree configs, status states
+    courses.js           # Course database (const C array)
+  utils/
+    helpers.js           # overlaps(), save(), load(), toURL(), fromURL()
+    ics.js               # exportICS() — .ics calendar file generation
+    xlsx.js              # parseGradeCalc() — Grade Calculator spreadsheet parser
+  App.jsx                # Main App component, sub-components, error boundary, mount
+build.py                 # Concatenates src/ into docs/index.html
+```
+
+All source files share the global scope of one `<script type="text/babel">` block &mdash; there are no `import`/`export` statements. Source file order matters (constants before utilities before App).
 
 ---
 
@@ -174,21 +197,20 @@ Share URLs encode the user's full plan as base64 in the `?s=` query parameter. I
 ---
 ## Navigating the code
 
-`docs/index.html` is one large file. Look for section comments (`// ──`) to find your way:
+Source files in `src/` are concatenated into `docs/index.html` by `build.py`. The generated file has section markers (`// ── filename ──`) to identify boundaries. See the [source file structure](#source-file-structure) above for what lives where.
 
-| Comment | What it contains |
+Key sections in `src/App.jsx`:
+
+| Section | What it contains |
 |---------|-----------------|
-| `// ── Constants` | Days, hours, colors, focus areas, degree configs |
-| `// ── ALL COURSES ──` | The course database (`const C = [...]`) |
-| `// ── Utility functions` | Overlap check, localStorage, URL encoding, ICS export, XLSX parser |
-| `// ── State` | All React `useState` hooks (plan data, layout, UI state) |
-| `// ── Derived data` | Computed values: effective course list, visible courses |
-| `// ── Conflict detection` | Hard/soft conflict logic |
-| `// ── ECTS projection` | LP counting split by locked/likely/considering |
-| `// ── Grid slot map` | Maps hour-cells to courses for the schedule grid |
-| `// ── Share, export, reset` | Action handlers |
-| `// ── Sidebar grouping` | Area-based and status-based course groups |
-| `// ── Reusable sub-components` | SlotEditor, CourseRow |
-| `// ── Onboarding ──` | Help/intro screen |
-| `// ── Main ──` | The main render: header, grid, sidebar, conflicts, footer, tooltip |
-| `// ── Error boundary` | Catches errors and shows them instead of a white screen |
+| State hooks | All React `useState` (plan data, layout, UI) |
+| Derived data | Effective course list, visible courses |
+| Conflict detection | Hard/soft conflict logic |
+| ECTS projection | LP counting split by locked/likely/considering |
+| Grid slot map | Maps hour-cells to courses for the schedule grid |
+| Share, export, reset | Action handlers |
+| Sidebar grouping | Area-based and status-based course groups |
+| SlotEditor, CourseRow | Reusable sub-components |
+| Onboarding | Help/intro screen |
+| Main render | Header, grid, sidebar, conflicts, footer, menus, tooltip |
+| Error boundary | Catches errors and shows them instead of a white screen |

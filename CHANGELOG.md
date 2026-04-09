@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.2.0 — 2026-04-09
+
+### Added
+- Right-click context menu on grid course blocks to set attendance mode (In-person / Not known / Remote possible)
+- Per-slot room assignments: each time slot can have its own room (course-level room serves as fallback)
+- Room field in the slot editor (edit and add-course forms)
+- LOCATION field in ICS calendar export (uses slot-level room with course-level fallback)
+- Python build script (`build.py`) for modular source code
+
+### Changed
+- Source code refactored from single `docs/index.html` into modular `src/` structure (data, utils, App)
+- Ethics/Mind and Philosophy area color changed from amber (`#d97706`) to orange-red (`#c2410c`) to avoid confusion with soft conflict warning color
+- Attendance mode labels updated: "Unclear" → "Not known", "Remote OK" → "Remote possible"
+- Tooltip now shows per-slot rooms when they differ across slots
+- Developers edit `src/` files and run `python build.py` instead of editing `docs/index.html` directly
+- ECTS panel: area bar LP now shows only this semester's LP (imported baseline visible in bar segment only)
+- ECTS panel: summary boxes renamed — "WP" → "Compulsory Electives", "LP total" → "LP this semester"
+- ECTS panel: added tooltip on Compulsory Electives box explaining Wahlpflichtbereich and PO assignment
+- ECTS panel: added note below summary (PO 2024 only) that focus area assignments are preliminary
+
+---
+
 ## v1.1.0 — 2026-04-08
 
 ### Added
