@@ -316,7 +316,7 @@ function App(){
   // ── State: plan data ──
   const [ck,setCk]=useState("msc24");
   const [status,setStatus]=useState({});
-  const [pres,setPres]=useState(()=>{const o={};C.forEach(c=>{o[c.id]="unclear"});return o});
+  const [pres,setPres]=useState(()=>{const o={};C.forEach(c=>{c.slots.forEach((_,si)=>{o[`${c.id}:${si}`]="unclear"})});return o});
   const [custom,setCustom]=useState([]);
   const [baseline,setBaseline]=useState({});
   const [edits,setEdits]=useState({}); // {courseId: {name,short,ects,a24,a19,slots,...}}
@@ -389,10 +389,11 @@ function App(){
   const [showRef,setShowRef]=useState(false);
   const [confirmDelete,setConfirmDelete]=useState(false);
   const [gridMenu,setGridMenu]=useState(null); // {id,x,y} — status menu on grid left-click
-  const [presMenu,setPresMenu]=useState(null); // {id,x,y} — attendance menu on grid right-click
+  const [presMenu,setPresMenu]=useState(null); // {id,si,x,y} — attendance menu on grid right-click
 
   const isOn=(id)=>!!status[id]&&status[id]!=="dropped";
   const stOf=(id)=>ST.find(s=>s.v===status[id])||null;
+  const presOf=(id,si)=>pres[`${id}:${si}`]||"unclear";
   const cfg=CFGS[ck];
   const isPo24=cfg.po24;
   const isMsc=cfg.msc;
@@ -424,8 +425,21 @@ function App(){
       if(d.ck&&CFGS[d.ck])setCk(d.ck);
       if(d.status)setStatus(d.status);
       else if(d.on){const m={};Object.entries(d.on).forEach(([k,v])=>{if(v)m[k]="locked"});setStatus(m)}
-      if(d.pres)setPres(p=>{const n={...p};Object.entries(d.pres).forEach(([k,v])=>{if(k in n)n[k]=v});return n});
-      if(d.custom){setCustom(d.custom);d.custom.forEach(c=>{setPres(p=>({...p,[c.id]:p[c.id]||"unclear"}))})}
+      if(d.pres){
+        const isOld=Object.keys(d.pres).some(k=>!k.includes(":"));
+        if(isOld){
+          const allC=[...C,...(d.custom||[])];
+          const np={};
+          Object.entries(d.pres).forEach(([id,v])=>{
+            const c=allC.find(x=>x.id===id);
+            if(c)c.slots.forEach((_,si)=>{np[`${id}:${si}`]=v});
+          });
+          setPres(p=>({...p,...np}));
+        }else{
+          setPres(p=>({...p,...d.pres}));
+        }
+      }
+      if(d.custom){setCustom(d.custom);d.custom.forEach(c=>{c.slots.forEach((_,si)=>{setPres(p=>({...p,[`${c.id}:${si}`]:p[`${c.id}:${si}`]||"unclear"}))})})}
       if(d.edits)setEdits(d.edits);
       // Baseline: use URL's baseline if present, otherwise keep recipient's own from localStorage
       if(d.baseline)setBaseline(d.baseline);
@@ -443,7 +457,8 @@ function App(){
     return{...p,[id]:v};
   });
   const dropCourse=(id)=>setStatus(p=>{const n={...p};delete n[id];return n});
-  const cyclePres=(id)=>{const o=["yes","unclear","no"];setPres(p=>({...p,[id]:o[(o.indexOf(p[id])+1)%3]}))};
+  const cyclePres=(id,si)=>{const k=`${id}:${si}`;const o=["yes","unclear","no"];setPres(p=>({...p,[k]:o[(o.indexOf(p[k]||"unclear")+1)%3]}))};
+  const cyclePresAll=(id)=>{const o=["yes","unclear","no"];setPres(p=>{const n={...p};const crs=courses.find(x=>x.id===id);if(!crs)return n;const vals=crs.slots.map((_,si)=>n[`${id}:${si}`]||"unclear");const cur=vals.includes("yes")?"yes":vals.includes("unclear")?"unclear":"no";const next=o[(o.indexOf(cur)+1)%3];crs.slots.forEach((_,si)=>{n[`${id}:${si}`]=next});return n})};
 
   // Add custom course (multi-slot)
   const addCustom=()=>{
@@ -453,7 +468,7 @@ function App(){
       deg:"both",cat:"course",a24:f.a24,a19:f.a19,room:f.room||"",slots:addSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end),...(s.room?{room:s.room}:{})})),note:"Custom",isCustom:true};
     setCustom(p=>[...p,nc]);
     setStatus(p=>({...p,[id]:"considering"}));
-    setPres(p=>({...p,[id]:"unclear"}));
+    nc.slots.forEach((_,si)=>{setPres(p=>({...p,[`${id}:${si}`]:"unclear"}))});
     setNextCid(n=>n+1);
     setAddForm({name:"",short:"",ects:4,a24:"Free Elective",a19:"Free Elective",room:""});
     setAddSlots([]);
@@ -463,7 +478,7 @@ function App(){
     setCustom(p=>p.filter(c=>c.id!==id));
     setEdits(p=>{const n={...p};delete n[id];return n});
     setStatus(p=>{const n={...p};delete n[id];return n});
-    setPres(p=>{const n={...p};delete n[id];return n});
+    setPres(p=>{const n={...p};Object.keys(n).filter(k=>k.startsWith(id+":")).forEach(k=>delete n[k]);return n});
   };
 
   // Edit any course
@@ -494,9 +509,9 @@ function App(){
     const hardSet=new Set(),softSet=new Set(),hardPairs=[],softPairs=[];
     const act=visible.filter(c=>(status[c.id]==="locked"||status[c.id]==="likely")&&c.slots.length>0);
     for(let i=0;i<act.length;i++)for(let j=i+1;j<act.length;j++){
-      if(pres[act[i].id]==="no"||pres[act[j].id]==="no")continue;
-      for(const sa of act[i].slots)for(const sb of act[j].slots){
+      for(const [sai,sa] of act[i].slots.entries())for(const [sbi,sb] of act[j].slots.entries()){
         if(!overlaps(sa,sb))continue;
+        if(presOf(act[i].id,sai)==="no"||presOf(act[j].id,sbi)==="no")continue;
         const pair={a:act[i],b:act[j],day:sa.day,from:Math.max(sa.start,sb.start),to:Math.min(sa.end,sb.end)};
         if(status[act[i].id]==="likely"&&status[act[j].id]==="likely"){
           softSet.add(act[i].id);softSet.add(act[j].id);softPairs.push(pair);
@@ -555,11 +570,11 @@ function App(){
     parseGradeCalc(file).then(b=>{setBaseline(b);setShowBaselineEdit(false)}).catch(err=>setImportError(String(err)));
     e.target.value="";
   };
-  const reset=()=>{setStatus({});const p={};courses.forEach(c=>{p[c.id]="unclear"});setPres(p)};
+  const reset=()=>{setStatus({});const p={};courses.forEach(c=>{c.slots.forEach((_,si)=>{p[`${c.id}:${si}`]="unclear"})});setPres(p)};
   const deleteAllData=()=>{
     try{localStorage.removeItem(SK)}catch(e){}
     setStatus({});setEdits({});setBaseline({});setCustom([]);
-    const p={};C.forEach(c=>{p[c.id]="unclear"});setPres(p);
+    const p={};C.forEach(c=>{c.slots.forEach((_,si)=>{p[`${c.id}:${si}`]="unclear"})});setPres(p);
     setCk("msc24");setConfirmDelete(false);
     if(location.search)history.replaceState({},"",location.pathname);
   };
@@ -652,7 +667,9 @@ function App(){
     const hasConf=conflicts.allSet.has(c.id);
     const isHard=conflicts.hardSet.has(c.id);
     const hasSched=c.slots.length>0;
-    const pr=PR.find(p=>p.v===pres[c.id]);
+    const prVals=c.slots.map((_,si)=>presOf(c.id,si));
+    const summaryPres=prVals.includes("yes")?"yes":prVals.includes("unclear")?"unclear":"no";
+    const pr=PR.find(p=>p.v===summaryPres);
     const isEdited=!!edits[c.id];
     const isHovered=hov===c.id;
 
@@ -717,7 +734,7 @@ function App(){
           width:20,height:20,borderRadius:3,border:"none",background:"#fef2f2",color:"#dc2626",
           fontSize:12,padding:0,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,
         }}>×</button>}
-        {active&&hasSched&&!isDropped&&<button onClick={()=>cyclePres(c.id)} title={pr?`${pr.l} — click to change`:""} style={{
+        {active&&hasSched&&!isDropped&&<button onClick={()=>cyclePresAll(c.id)} title={pr?`${pr.l} — click to change all slots`:""} style={{
           width:26,height:22,borderRadius:5,border:`1.5px solid ${pr.c}44`,
           background:`${pr.c}15`,fontSize:13,padding:0,flexShrink:0,
           display:"flex",alignItems:"center",justifyContent:"center",
@@ -1036,14 +1053,14 @@ function App(){
                       const isHard=conflicts.hardSet.has(c.id);
                       const isSoft=conflicts.softSet.has(c.id);
                       const hasConf=isHard||isSoft;
-                      const isRem=pres[c.id]==="no";
+                      const isRem=presOf(c.id,entry.si)==="no";
                       const isCons=status[c.id]==="considering";
                       const st=stOf(c.id);
                       const idx=entries.findIndex(e=>e.course.id===c.id&&e.si===entry.si);
                       const hi=hov===c.id;
                       return(<div key={c.id+entry.si}
                         onClick={e=>{e.stopPropagation();setPresMenu(null);setGridMenu({id:c.id,x:e.clientX,y:e.clientY})}}
-                        onContextMenu={e=>{e.preventDefault();e.stopPropagation();setGridMenu(null);setPresMenu({id:c.id,x:e.clientX,y:e.clientY})}}
+                        onContextMenu={e=>{e.preventDefault();e.stopPropagation();setGridMenu(null);setPresMenu({id:c.id,si:entry.si,x:e.clientX,y:e.clientY})}}
                         onMouseEnter={()=>setHov(c.id)} onMouseMove={e=>setMousePos({x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)} style={{
                         position:"absolute",top:0,left:`${(idx/entries.length)*100}%`,width:`${100/entries.length}%`,
                         height:dur*RH-2,
@@ -1147,15 +1164,18 @@ function App(){
       {/* Grid right-click menu (attendance/presence mode) */}
       {presMenu&&(()=>{
         const c=courses.find(x=>x.id===presMenu.id);if(!c)return null;
+        const sl=c.slots[presMenu.si];
+        const slotLabel=sl?` (${DAYS[sl.day]} ${sl.start}–${sl.end}${sl.label?" "+sl.label:""})`:"";
         const mx=Math.min(presMenu.x,window.innerWidth-170);
         const my=Math.min(presMenu.y,window.innerHeight-140);
-        const pick=(v)=>{setPres(p=>({...p,[presMenu.id]:v}));setPresMenu(null)};
+        const pick=(v)=>{setPres(p=>({...p,[`${presMenu.id}:${presMenu.si}`]:v}));setPresMenu(null)};
+        const cur=presOf(presMenu.id,presMenu.si);
         return(<>
           <div onClick={()=>setPresMenu(null)} style={{position:"fixed",inset:0,zIndex:999}}/>
           <div style={{position:"fixed",left:mx,top:my,zIndex:1000,background:"white",borderRadius:8,padding:"4px",boxShadow:"0 4px 20px rgba(0,0,0,.15)",border:"1px solid #e5e7eb",minWidth:150}}>
-            <div style={{padding:"4px 8px",fontSize:11,color:"#9ca3af",fontWeight:600,borderBottom:"1px solid #f3f4f6",marginBottom:2}}>{c.short} — Attendance</div>
+            <div style={{padding:"4px 8px",fontSize:11,color:"#9ca3af",fontWeight:600,borderBottom:"1px solid #f3f4f6",marginBottom:2}}>{c.short}{slotLabel} — Attendance</div>
             {PR.map(p=>(
-              <button key={p.v} onClick={()=>pick(p.v)} style={{display:"flex",alignItems:"center",gap:6,width:"100%",padding:"6px 8px",border:"none",background:pres[presMenu.id]===p.v?`${p.c}10`:"white",borderRadius:4,fontSize:13,color:"#374151",textAlign:"left",cursor:"pointer"}}>
+              <button key={p.v} onClick={()=>pick(p.v)} style={{display:"flex",alignItems:"center",gap:6,width:"100%",padding:"6px 8px",border:"none",background:cur===p.v?`${p.c}10`:"white",borderRadius:4,fontSize:13,color:"#374151",textAlign:"left",cursor:"pointer"}}>
                 <span style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${p.c}`,background:`${p.c}15`,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12}}>{p.icon}</span> {p.l}
               </button>
             ))}

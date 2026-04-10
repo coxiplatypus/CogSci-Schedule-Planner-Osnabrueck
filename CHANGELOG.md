@@ -10,6 +10,9 @@
 - Python build script (`build.py`) for modular source code
 
 ### Changed
+- Attendance mode is now per time slot instead of per course — right-click targets a specific slot, sidebar button cycles all slots together
+- Conflict detection respects per-slot attendance: setting one slot to remote only excludes that slot's overlaps
+- Right-click attendance menu header now shows the targeted slot (e.g. "NDyn (Tu 10–12) — Attendance")
 - Source code refactored from single `docs/index.html` into modular `src/` structure (data, utils, App)
 - Ethics/Mind and Philosophy area color changed from amber (`#d97706`) to orange-red (`#c2410c`) to avoid confusion with soft conflict warning color
 - Attendance mode labels updated: "Unclear" → "Not known", "Remote OK" → "Remote possible"
