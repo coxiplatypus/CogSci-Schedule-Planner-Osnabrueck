@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.3.0 — 2026-04-10
+
+### Added
+- Quarter-hour time slots: start and end times now support any minute (default 14:15–15:45 following the German c.t. convention). Slots are entered via a native time picker that snaps to 15-minute steps but accepts arbitrary minutes when typed.
+- Right-click a grid course block → set that specific slot's room directly from the attendance menu (room row below the presence toggles; press Enter to save, Escape to cancel).
+- `CLAUDE.md` workflow guide at the repo root — documents the `.venv/bin/python build.py` flow, source layout, and the "don't define components inside components" React gotcha that caused the room-input focus bug.
+- `parseTime` / `fmtTime` / `fmtTimeShort` helpers in `src/utils/helpers.js`, and a `DEFAULT_SLOT` constant in `src/data/constants.js`.
+
+### Changed
+- Per-slot rooms are now the primary model; the course-level `room` field is relabelled "Default room" and kept as a legacy fallback (existing data in `src/data/courses.js` and old share URLs keep working).
+- Default new time slot is 14:15–15:45 instead of 10:00–12:00.
+- Time display unified across the grid tooltip, edit form, conflict list, and right-click menu via the `fmtTime*` helpers.
+- SlotEditor replaces its two hour-select dropdowns with native `<input type="time" step="900">` pickers.
+- Grid block positioning now uses fractional top offsets so 14:15 slots start a quarter-row below the 14:00 gridline.
+
+### Fixed
+- Room input (per-slot and course-level) lost focus after every keystroke because `SlotEditor` and `CourseRow` were defined inside the `App` component, so every parent render gave them a new function identity and React unmounted/remounted the inputs. They're now module-scope render functions (`renderSlotEditor`, `renderCourseRow`) called inline, so inputs stay mounted across renders.
+
+---
+
 ## v1.2.0 — 2026-04-09
 
 ### Added

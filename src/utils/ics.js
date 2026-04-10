@@ -5,10 +5,10 @@ function exportICS(courses,status,pres,areaOfFn){
   let ics="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CogSci Planner//SoSe2026//EN\r\nCALSCALE:GREGORIAN\r\n";
   courses.forEach(c=>{
     if(!status[c.id]||c.slots.length===0)return;
+    const toHHMMSS=(t)=>{const n=parseTime(t);const h=Math.floor(n);const m=Math.round((n-h)*60);return String(h).padStart(2,"0")+String(m).padStart(2,"0")+"00"};
     c.slots.forEach((sl,si)=>{
       const d=FD[sl.day];
-      const sh=String(sl.start).padStart(2,"0"),eh=String(sl.end).padStart(2,"0");
-      ics+=`BEGIN:VEVENT\r\nDTSTART:${d}T${sh}0000\r\nDTEND:${d}T${eh}0000\r\n`;
+      ics+=`BEGIN:VEVENT\r\nDTSTART:${d}T${toHHMMSS(sl.start)}\r\nDTEND:${d}T${toHHMMSS(sl.end)}\r\n`;
       ics+=`RRULE:FREQ=WEEKLY;UNTIL=20260711T235959Z\r\n`;
       ics+=`SUMMARY:${c.name}${sl.label?" ("+sl.label+")":""}\r\n`;
       const room=sl.room||c.room;

@@ -1,6 +1,8 @@
 const {useState,useMemo,useEffect}=React;
 // ── Constants: days, hours, grid size, localStorage key ──
 const DAYS=["Mo","Tu","We","Th","Fr"],HOURS=[8,9,10,11,12,13,14,15,16,17,18,19],RH=42,SK="cogsci-pub-v1";
+// Default new slot: 14:15–15:45 (German c.t. convention, 90 min)
+const DEFAULT_SLOT={day:0,start:14.25,end:15.75};
 // Presence/attendance modes: in-person, unclear, remote
 const PR=[{v:"yes",l:"In-person",icon:"🏫",c:"#dc2626"},{v:"unclear",l:"Not known",icon:"❓",c:"#d97706"},{v:"no",l:"Remote possible",icon:"💻",c:"#059669"}];
 

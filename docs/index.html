@@ -40,6 +40,8 @@ button,select,input{font-family:inherit;cursor:pointer}
 const {useState,useMemo,useEffect}=React;
 // ── Constants: days, hours, grid size, localStorage key ──
 const DAYS=["Mo","Tu","We","Th","Fr"],HOURS=[8,9,10,11,12,13,14,15,16,17,18,19],RH=42,SK="cogsci-pub-v1";
+// Default new slot: 14:15–15:45 (German c.t. convention, 90 min)
+const DEFAULT_SLOT={day:0,start:14.25,end:15.75};
 // Presence/attendance modes: in-person, unclear, remote
 const PR=[{v:"yes",l:"In-person",icon:"🏫",c:"#dc2626"},{v:"unclear",l:"Not known",icon:"❓",c:"#d97706"},{v:"no",l:"Remote possible",icon:"💻",c:"#059669"}];
 
@@ -251,8 +253,12 @@ const C=[
 
 
 // ── utils/helpers.js ──
-// ── Utility functions: overlap check, localStorage, URL encoding ──
+// ── Utility functions: overlap check, localStorage, URL encoding, time format ──
 function overlaps(a,b){return a.day===b.day&&a.start<b.end&&b.start<a.end}
+// Times are stored as decimal hours (14.25 = 14:15). Integers stay valid (14 = 14:00).
+function parseTime(s){if(typeof s==="number")return s;if(s==null||s==="")return 0;const p=String(s).split(":");const h=parseFloat(p[0])||0;const m=p[1]?parseFloat(p[1])||0:0;return h+m/60}
+function fmtTime(t){const n=parseTime(t);const h=Math.floor(n);const m=Math.round((n-h)*60);return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`}
+function fmtTimeShort(t){const n=parseTime(t);const h=Math.floor(n);const m=Math.round((n-h)*60);return m?`${h}:${String(m).padStart(2,"0")}`:`${h}`}
 function save(s){try{localStorage.setItem(SK,JSON.stringify(s))}catch(e){}}
 function load(){try{const s=localStorage.getItem(SK);return s?JSON.parse(s):null}catch(e){return null}}
 function toURL(s){try{return location.origin+location.pathname+"?s="+btoa(unescape(encodeURIComponent(JSON.stringify(s))))}catch(e){return null}}
@@ -267,10 +273,10 @@ function exportICS(courses,status,pres,areaOfFn){
   let ics="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CogSci Planner//SoSe2026//EN\r\nCALSCALE:GREGORIAN\r\n";
   courses.forEach(c=>{
     if(!status[c.id]||c.slots.length===0)return;
+    const toHHMMSS=(t)=>{const n=parseTime(t);const h=Math.floor(n);const m=Math.round((n-h)*60);return String(h).padStart(2,"0")+String(m).padStart(2,"0")+"00"};
     c.slots.forEach((sl,si)=>{
       const d=FD[sl.day];
-      const sh=String(sl.start).padStart(2,"0"),eh=String(sl.end).padStart(2,"0");
-      ics+=`BEGIN:VEVENT\r\nDTSTART:${d}T${sh}0000\r\nDTEND:${d}T${eh}0000\r\n`;
+      ics+=`BEGIN:VEVENT\r\nDTSTART:${d}T${toHHMMSS(sl.start)}\r\nDTEND:${d}T${toHHMMSS(sl.end)}\r\n`;
       ics+=`RRULE:FREQ=WEEKLY;UNTIL=20260711T235959Z\r\n`;
       ics+=`SUMMARY:${c.name}${sl.label?" ("+sl.label+")":""}\r\n`;
       const room=sl.room||c.room;
@@ -465,7 +471,7 @@ function App(){
     const f=addForm;if(!f.name.trim())return;
     const id=`custom-${nextCid}`;
     const nc={id,name:f.name.trim(),short:f.short.trim()||f.name.trim().split(/\s+/)[0],ects:parseInt(f.ects)||4,nr:"",
-      deg:"both",cat:"course",a24:f.a24,a19:f.a19,room:f.room||"",slots:addSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end),...(s.room?{room:s.room}:{})})),note:"Custom",isCustom:true};
+      deg:"both",cat:"course",a24:f.a24,a19:f.a19,room:f.room||"",slots:addSlots.map(s=>({day:parseInt(s.day),start:parseTime(s.start),end:parseTime(s.end),...(s.room?{room:s.room}:{})})),note:"Custom",isCustom:true};
     setCustom(p=>[...p,nc]);
     setStatus(p=>({...p,[id]:"considering"}));
     nc.slots.forEach((_,si)=>{setPres(p=>({...p,[`${id}:${si}`]:"unclear"}))});
@@ -485,13 +491,13 @@ function App(){
   const startEdit=(c)=>{
     setEditingId(c.id);
     setEditForm({name:c.name,short:c.short,ects:c.ects,a24:c.a24||"Free Elective",a19:c.a19||"Free Elective",nr:c.nr||"",room:c.room||""});
-    setEditSlots(c.slots.map(s=>({day:String(s.day),start:String(s.start),end:String(s.end),label:s.label||"",room:s.room||""})));
+    setEditSlots(c.slots.map(s=>({day:s.day,start:parseTime(s.start),end:parseTime(s.end),label:s.label||"",room:s.room||""})));
   };
   const saveEdit=()=>{
     if(!editForm||!editingId)return;
     const f=editForm;
     const patch={name:f.name.trim(),short:f.short.trim(),ects:parseInt(f.ects)||4,a24:f.a24,a19:f.a19,nr:f.nr,room:f.room.trim(),
-      slots:editSlots.map(s=>({day:parseInt(s.day),start:parseInt(s.start),end:parseInt(s.end),...(s.label?{label:s.label}:{}),...(s.room?{room:s.room}:{})}))};
+      slots:editSlots.map(s=>({day:parseInt(s.day),start:parseTime(s.start),end:parseTime(s.end),...(s.label?{label:s.label}:{}),...(s.room?{room:s.room}:{})}))};
     // For custom courses, update the custom array directly
     const isCustom=editingId.startsWith("custom-");
     if(isCustom){
@@ -503,6 +509,28 @@ function App(){
   };
   const cancelEdit=()=>{setEditingId(null);setEditForm(null);setEditSlots([])};
   const resetEdit=(id)=>{setEdits(p=>{const n={...p};delete n[id];return n})};
+
+  // Per-slot room edit (from right-click menu). Writes to the edits overlay for
+  // built-in courses and directly into the custom array for user-added ones.
+  const updateSlotRoom=(courseId,slotIdx,room)=>{
+    const c=courses.find(x=>x.id===courseId);if(!c)return;
+    const trimmed=(room||"").trim();
+    const curSlot=c.slots[slotIdx]||{};
+    if((curSlot.room||"")===trimmed)return;
+    const newSlots=c.slots.map((s,i)=>{
+      if(i!==slotIdx)return s;
+      const {room:_,...rest}=s;
+      return trimmed?{...rest,room:trimmed}:rest;
+    });
+    if(courseId.startsWith("custom-")){
+      setCustom(p=>p.map(x=>x.id===courseId?{...x,slots:newSlots}:x));
+    }else{
+      setEdits(p=>{
+        const prev=p[courseId]||{};
+        return {...p,[courseId]:{...prev,slots:newSlots}};
+      });
+    }
+  };
 
   // Conflicts: hard (locked/likely vs locked/likely, at least one locked) and soft (likely vs likely)
   const conflicts=useMemo(()=>{
@@ -546,11 +574,26 @@ function App(){
   const selTotal=Object.keys(proj.locked).reduce((s,k)=>s+(proj.locked[k]||0)+(proj.likely[k]||0),0);
   const conTotal=Object.values(proj.considering).reduce((a,b)=>a+b,0);
 
-  // ── Grid slot map: map each hour-cell to the courses that occupy it ──
+  // ── Grid slot map: each entry is placed in the hour-cell of its start,
+  // using fractional hours for sub-hour offsets and heights. Overlap lanes are
+  // computed per integer-hour cell so that courses touching the same row-cell
+  // render side-by-side. ──
   const slotMap=useMemo(()=>{
     const m={};DAYS.forEach((_,di)=>HOURS.forEach(h=>{m[`${di}-${h}`]=[]}));
     visible.forEach(c=>{if(!isOn(c.id))return;
-      c.slots.forEach((sl,si)=>{for(let h=sl.start;h<sl.end;h++){const k=`${sl.day}-${h}`;if(m[k])m[k].push({course:c,slot:sl,si,isStart:h===sl.start})}});
+      c.slots.forEach((sl,si)=>{
+        const s=parseTime(sl.start),e=parseTime(sl.end);
+        const startH=Math.floor(s),endH=Math.ceil(e);
+        // Register as a starter in its start hour cell
+        const sk=`${sl.day}-${startH}`;
+        if(m[sk])m[sk].push({course:c,slot:sl,si,isStart:true,startDec:s,endDec:e});
+        // Register as an occupier in every subsequent hour cell so overlap-lane
+        // computation knows the cell is busy, but without a second rendered block.
+        for(let h=startH+1;h<endH;h++){
+          const k=`${sl.day}-${h}`;
+          if(m[k])m[k].push({course:c,slot:sl,si,isStart:false,startDec:s,endDec:e});
+        }
+      });
     });return m;
   },[status,visible]);
 
@@ -638,31 +681,31 @@ function App(){
 
   const getClForArea=(key)=>{const cat=categories.find(c=>c.key===key);return cat?cat.cl:CL.fe};
 
-  // Slot editor component (reusable for add + edit forms)
-  const SlotEditor=({slots,setSlots})=>(
+  // Slot editor: a render function (NOT a component) so its <input>s stay mounted
+  // across parent re-renders. Defining it as a component inside App gave every
+  // render a fresh function identity, which React treats as a new type → unmount
+  // → remount → focus loss after every keystroke in room/time fields.
+  const renderSlotEditor=(slots,setSlots)=>(
     <div style={{marginBottom:3}}>
       {slots.map((sl,i)=>(
         <div key={i} style={{display:"flex",gap:3,marginBottom:2,alignItems:"center"}}>
-          <select value={sl.day} onChange={e=>{const n=[...slots];n[i]={...n[i],day:e.target.value};setSlots(n)}} style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
+          <select value={sl.day} onChange={e=>{const n=[...slots];n[i]={...n[i],day:parseInt(e.target.value)};setSlots(n)}} style={{flex:1,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
             {DAYS.map((d,di)=><option key={di} value={di}>{d}</option>)}
           </select>
-          <select value={sl.start} onChange={e=>{const n=[...slots];n[i]={...n[i],start:e.target.value};setSlots(n)}} style={{width:52,padding:"3px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
-            {HOURS.map(h=><option key={h} value={h}>{h}:00</option>)}
-          </select>
+          <input type="time" step="900" value={fmtTime(sl.start)} onChange={e=>{const n=[...slots];n[i]={...n[i],start:parseTime(e.target.value)};setSlots(n)}} style={{width:82,padding:"3px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}} title="Start time (15-min steps; type any minute)"/>
           <span style={{fontSize:9,color:"#9ca3af"}}>–</span>
-          <select value={sl.end} onChange={e=>{const n=[...slots];n[i]={...n[i],end:e.target.value};setSlots(n)}} style={{width:52,padding:"3px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}}>
-            {[...HOURS.filter(h=>h>parseInt(sl.start)),20].map(h=><option key={h} value={h}>{h}:00</option>)}
-          </select>
+          <input type="time" step="900" value={fmtTime(sl.end)} onChange={e=>{const n=[...slots];n[i]={...n[i],end:parseTime(e.target.value)};setSlots(n)}} style={{width:82,padding:"3px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}} title="End time (15-min steps; type any minute)"/>
           <input value={sl.room||""} onChange={e=>{const n=[...slots];n[i]={...n[i],room:e.target.value};setSlots(n)}} placeholder="Room" style={{width:60,padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12}} title="Room for this slot"/>
           <button onClick={()=>setSlots(slots.filter((_,j)=>j!==i))} style={{width:14,height:14,borderRadius:2,border:"none",background:"#fef2f2",color:"#dc2626",fontSize:8,padding:0,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
       ))}
-      <button onClick={()=>setSlots([...slots,{day:"0",start:"10",end:"12"}])} style={{fontSize:12,color:"#2563eb",background:"none",border:"none",padding:"2px 0"}}>+ Add time slot</button>
+      <button onClick={()=>setSlots([...slots,{...DEFAULT_SLOT}])} style={{fontSize:12,color:"#2563eb",background:"none",border:"none",padding:"2px 0"}}>+ Add time slot</button>
     </div>
   );
 
-  // Render a course row in sidebar
-  const CourseRow=({c,g})=>{
+  // Render a course row in sidebar — render function (NOT a component) so the
+  // inline edit form's <input>s don't get unmounted on every keystroke.
+  const renderCourseRow=(c,g)=>{
     const st=stOf(c.id);const active=isOn(c.id);
     const hasConf=conflicts.allSet.has(c.id);
     const isHard=conflicts.hardSet.has(c.id);
@@ -675,7 +718,7 @@ function App(){
 
     // Inline edit form
     if(editingId===c.id)return(
-      <div style={{padding:6,background:"#f8fafc",borderRadius:5,marginBottom:2,border:"1px solid #e5e7eb"}}>
+      <div key={c.id+"-edit"} style={{padding:6,background:"#f8fafc",borderRadius:5,marginBottom:2,border:"1px solid #e5e7eb"}}>
         <div style={{fontSize:12,fontWeight:700,marginBottom:4,display:"flex",justifyContent:"space-between"}}>
           <span>Edit: {c.short}</span>
           {isEdited&&!c.isCustom&&<button onClick={()=>{resetEdit(c.id);cancelEdit()}} style={{fontSize:11,color:"#d97706",background:"none",border:"none"}} title="Reset to original data">Reset</button>}
@@ -688,8 +731,8 @@ function App(){
         <select value={editForm.a24} onChange={e=>setEditForm(p=>({...p,a24:e.target.value,a19:e.target.value}))} style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}>
           {[...cfg.areas.map(a=>a.key),"Free Elective","Study Project","Colloquium","BSc Core"].map(k=><option key={k} value={k}>{k}</option>)}
         </select>
-        <input value={editForm.room} onChange={e=>setEditForm(p=>({...p,room:e.target.value}))} placeholder="Room (e.g. 93/E31) — fallback for slots without room" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
-        <SlotEditor slots={editSlots} setSlots={setEditSlots}/>
+        <input value={editForm.room} onChange={e=>setEditForm(p=>({...p,room:e.target.value}))} placeholder="Default room (optional — per-slot overrides below)" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
+        {renderSlotEditor(editSlots,setEditSlots)}
         <div style={{display:"flex",gap:3,marginTop:2}}>
           <button onClick={saveEdit} style={{flex:1,padding:"3px",borderRadius:3,border:"none",background:"#1d4ed8",color:"white",fontSize:12,fontWeight:600}}>Save</button>
           <button onClick={cancelEdit} style={{padding:"3px 6px",borderRadius:3,border:"1px solid #d1d5db",background:"white",fontSize:12,color:"#6b7280"}}>Cancel</button>
@@ -699,7 +742,7 @@ function App(){
 
     const isDropped=status[c.id]==="dropped";
     return(
-      <div style={{
+      <div key={c.id} style={{
         display:"flex",alignItems:"center",gap:4,padding:"5px 6px",marginBottom:3,borderRadius:6,
         background:isHovered?"#eff6ff":"transparent",
         opacity:isDropped?.35:active?(status[c.id]==="considering"?.7:1):.55,
@@ -995,9 +1038,9 @@ function App(){
               </button>
               {g.note&&isOpen&&<div style={{padding:"4px 8px",fontSize:9.5,color:"#92400e",background:"#fffbeb",lineHeight:1.4}}>{g.note}</div>}
               {isOpen&&<div style={{padding:"2px 4px"}}>
-                {filtW.map(c=><CourseRow key={c.id} c={c} g={g}/>)}
+                {filtW.map(c=>renderCourseRow(c,g))}
                 {filtB.length>0&&filtW.length>0&&<div style={{borderTop:"1px dashed #d1d5db",margin:"5px 0 3px",fontSize:11,color:"#6b7280",paddingLeft:4,fontWeight:500}}>Block / no fixed time</div>}
-                {filtB.map(c=><CourseRow key={c.id} c={c} g={g}/>)}
+                {filtB.map(c=>renderCourseRow(c,g))}
               </div>}
             </div>);
           })}
@@ -1018,7 +1061,7 @@ function App(){
               </select>
               <input value={addForm.room||""} onChange={e=>setAddForm(p=>({...p,room:e.target.value}))} placeholder="Room (e.g. 93/E31)" style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,marginBottom:3}}/>
               <div style={{fontSize:11,fontWeight:600,marginBottom:2,color:"#6b7280"}}>Time slots</div>
-              <SlotEditor slots={addSlots} setSlots={setAddSlots}/>
+              {renderSlotEditor(addSlots,setAddSlots)}
               <div style={{display:"flex",gap:4,marginTop:3}}>
                 <button onClick={addCustom} style={{flex:1,padding:"4px",borderRadius:4,border:"none",background:"#1d4ed8",color:"white",fontSize:12,fontWeight:600}}>Add</button>
                 <button onClick={()=>{setShowAdd(false);setAddSlots([])}} style={{padding:"4px 8px",borderRadius:4,border:"1px solid #d1d5db",background:"white",fontSize:10,color:"#6b7280"}}>Cancel</button>
@@ -1048,7 +1091,8 @@ function App(){
                   const single=visDays.length===1;
                   return(<div key={`${di}-${h}`} style={{height:RH,borderTop:"1px solid #f0f0f0",borderLeft:"1px solid #f0f0f0",position:"relative"}}>
                     {starters.map(entry=>{
-                      const c=entry.course,sl=entry.slot,dur=sl.end-sl.start;
+                      const c=entry.course,sl=entry.slot;
+                      const sDec=entry.startDec,eDec=entry.endDec,dur=eDec-sDec;
                       const area=areaOf(c);const acl=getClForArea(area);
                       const isHard=conflicts.hardSet.has(c.id);
                       const isSoft=conflicts.softSet.has(c.id);
@@ -1062,7 +1106,7 @@ function App(){
                         onClick={e=>{e.stopPropagation();setPresMenu(null);setGridMenu({id:c.id,x:e.clientX,y:e.clientY})}}
                         onContextMenu={e=>{e.preventDefault();e.stopPropagation();setGridMenu(null);setPresMenu({id:c.id,si:entry.si,x:e.clientX,y:e.clientY})}}
                         onMouseEnter={()=>setHov(c.id)} onMouseMove={e=>setMousePos({x:e.clientX,y:e.clientY})} onMouseLeave={()=>setHov(null)} style={{
-                        position:"absolute",top:0,left:`${(idx/entries.length)*100}%`,width:`${100/entries.length}%`,
+                        position:"absolute",top:(sDec-h)*RH,left:`${(idx/entries.length)*100}%`,width:`${100/entries.length}%`,
                         height:dur*RH-2,
                         background:hi?`${acl.c}18`:isHard?"#fef2f2":isSoft?"#fffbeb":acl.bg,
                         border:`1.5px solid ${isHard?"#ef4444":isSoft?"#f59e0b":hi?acl.c:acl.c+"77"}`,
@@ -1093,7 +1137,7 @@ function App(){
           <div style={{fontWeight:700,marginBottom:3,fontSize:14}}>⚠ Conflicts{dayF!==null?` (${DAYS[dayF]})`:""} — locked/likely, both in-person/unclear:</div>
           {fHardConf.map((p,i)=>(
             <div key={i} style={{marginBottom:1}}>
-              {DAYS[p.day]} {p.from}–{p.to}h: <strong>{p.a.short}</strong> vs <strong>{p.b.short}</strong>
+              {DAYS[p.day]} {fmtTimeShort(p.from)}–{fmtTimeShort(p.to)}: <strong>{p.a.short}</strong> vs <strong>{p.b.short}</strong>
               {" — "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.a.id)}>drop {p.a.short}</span>
               {" | "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.b.id)}>drop {p.b.short}</span>
             </div>
@@ -1107,7 +1151,7 @@ function App(){
           <div style={{fontWeight:700,marginBottom:3,fontSize:14}}>~ Potential conflicts{dayF!==null?` (${DAYS[dayF]})`:""} — both likely:</div>
           {fSoftConf.map((p,i)=>(
             <div key={i} style={{marginBottom:1}}>
-              {DAYS[p.day]} {p.from}–{p.to}h: <strong>{p.a.short}</strong> vs <strong>{p.b.short}</strong>
+              {DAYS[p.day]} {fmtTimeShort(p.from)}–{fmtTimeShort(p.to)}: <strong>{p.a.short}</strong> vs <strong>{p.b.short}</strong>
               {" — "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.a.id)}>drop {p.a.short}</span>
               {" | "}<span style={{cursor:"pointer",textDecoration:"underline"}} onClick={()=>dropCourse(p.b.id)}>drop {p.b.short}</span>
             </div>
@@ -1165,7 +1209,7 @@ function App(){
       {presMenu&&(()=>{
         const c=courses.find(x=>x.id===presMenu.id);if(!c)return null;
         const sl=c.slots[presMenu.si];
-        const slotLabel=sl?` (${DAYS[sl.day]} ${sl.start}–${sl.end}${sl.label?" "+sl.label:""})`:"";
+        const slotLabel=sl?` (${DAYS[sl.day]} ${fmtTimeShort(sl.start)}–${fmtTimeShort(sl.end)}${sl.label?" "+sl.label:""})`:"";
         const mx=Math.min(presMenu.x,window.innerWidth-170);
         const my=Math.min(presMenu.y,window.innerHeight-140);
         const pick=(v)=>{setPres(p=>({...p,[`${presMenu.id}:${presMenu.si}`]:v}));setPresMenu(null)};
@@ -1179,6 +1223,19 @@ function App(){
                 <span style={{width:18,height:18,borderRadius:4,border:`1.5px solid ${p.c}`,background:`${p.c}15`,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:12}}>{p.icon}</span> {p.l}
               </button>
             ))}
+            <div style={{borderTop:"1px solid #f3f4f6",margin:"4px 0 2px",padding:"4px 8px 4px"}}>
+              <div style={{fontSize:10,color:"#9ca3af",fontWeight:600,marginBottom:2}}>Room</div>
+              <input
+                key={`${presMenu.id}:${presMenu.si}`}
+                defaultValue={(sl&&sl.room)||""}
+                placeholder={c.room||"Room"}
+                onClick={e=>e.stopPropagation()}
+                onBlur={e=>{updateSlotRoom(presMenu.id,presMenu.si,e.target.value);setPresMenu(null)}}
+                onKeyDown={e=>{if(e.key==="Enter"){e.preventDefault();updateSlotRoom(presMenu.id,presMenu.si,e.target.value);setPresMenu(null)}else if(e.key==="Escape"){setPresMenu(null)}}}
+                style={{width:"100%",padding:"3px 5px",borderRadius:4,border:"1px solid #d1d5db",fontSize:12,boxSizing:"border-box"}}
+                title="Press Enter to save this slot's room"
+              />
+            </div>
           </div>
         </>);
       })()}
@@ -1195,8 +1252,8 @@ function App(){
           <div style={{fontWeight:700,color:"#1f2937",marginBottom:2}}>{c.name}</div>
           <div style={{fontSize:13,color:"#4b5563"}}>{c.nr?`${c.nr} · `:""}{c.ects||"?"} LP · <span style={{color:acl.t,fontWeight:600}}>{area}</span>{st&&<span style={{color:st.c,fontWeight:600}}> · {st.l}</span>}</div>
           {c.note&&<div style={{fontSize:12,color:"#92400e",fontStyle:"italic",marginTop:2}}>{c.note}</div>}
-          {c.slots.length>0&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{c.slots.map((s,i)=>`${DAYS[s.day]} ${s.start}:00–${s.end}:00${s.label?" ("+s.label+")":""}`).join(", ")}</div>}
-          {hasPerSlotRooms?<div style={{fontSize:12,color:"#4b5563",marginTop:2}}>Rooms: {c.slots.map((s,i)=>`${DAYS[s.day]} ${s.start}–${s.end}: ${s.room||c.room||"?"}`).join(", ")}</div>
+          {c.slots.length>0&&<div style={{fontSize:12,color:"#6b7280",marginTop:2}}>{c.slots.map((s,i)=>`${DAYS[s.day]} ${fmtTime(s.start)}–${fmtTime(s.end)}${s.label?" ("+s.label+")":""}`).join(", ")}</div>}
+          {hasPerSlotRooms?<div style={{fontSize:12,color:"#4b5563",marginTop:2}}>Rooms: {c.slots.map((s,i)=>`${DAYS[s.day]} ${fmtTimeShort(s.start)}–${fmtTimeShort(s.end)}: ${s.room||c.room||"?"}`).join(", ")}</div>
           :uniqueRooms.length===1?<div style={{fontSize:12,color:"#4b5563",marginTop:2}}>Room: {uniqueRooms[0]}</div>
           :c.room?<div style={{fontSize:12,color:"#4b5563",marginTop:2}}>Room: {c.room}</div>
           :null}
