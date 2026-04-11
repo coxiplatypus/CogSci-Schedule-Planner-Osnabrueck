@@ -4,7 +4,7 @@ function exportICS(courses,status,pres,areaOfFn){
   const FD=["20260413","20260407","20260408","20260409","20260410"];
   let ics="BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//CogSci Planner//SoSe2026//EN\r\nCALSCALE:GREGORIAN\r\n";
   courses.forEach(c=>{
-    if(!status[c.id]||c.slots.length===0)return;
+    if(status[c.id]!=="locked"||c.slots.length===0)return;
     const toHHMMSS=(t)=>{const n=parseTime(t);const h=Math.floor(n);const m=Math.round((n-h)*60);return String(h).padStart(2,"0")+String(m).padStart(2,"0")+"00"};
     c.slots.forEach((sl,si)=>{
       const d=FD[sl.day];

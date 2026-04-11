@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.1 — 2026-04-11
+
+### Fixed
+- ICS calendar export now only includes courses marked **Locked**. Previously the guard used a truthiness check on the status string, so `considering`, `likely`, and even `dropped` courses all ended up in the exported `.ics` alongside the committed ones. The exported calendar now matches the student's confirmed schedule.
+
+---
+
 ## v1.3.0 — 2026-04-10
 
 ### Added
